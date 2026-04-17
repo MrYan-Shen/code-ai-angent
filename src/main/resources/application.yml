@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: code-agent
+server:
+  port: 8127
+  servlet:
+    context-path: /api
+# springdoc-openapi config
+springdoc:
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.hechang.codeagent.controller
+# knife4j config, enhance config, optional config
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
