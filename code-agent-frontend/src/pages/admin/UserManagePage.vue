@@ -41,7 +41,7 @@
         </template>
         <template v-else-if="column.key === 'action'">
           <a-space>
-            <a-button type="primary" size="small" @click="openEditModal(record)">修改</a-button>
+            <a-button info size="small" @click="openEditModal(record)">修改</a-button>
             <a-button danger size="small" @click="doDelete(record.id)">删除</a-button>
           </a-space>
         </template>
