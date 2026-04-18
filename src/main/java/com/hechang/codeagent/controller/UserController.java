@@ -73,7 +73,7 @@ public class UserController {
     /**
      * 获取当前登录用户 (返回的是脱敏后的用户信息)
      */
-    @GetMapping("/getCurrentUser")
+    @GetMapping("/get/login")
     public BaseResponse<LoginUserVO> getCurrentUser(HttpServletRequest request) {
         ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
 
