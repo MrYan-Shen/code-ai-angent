@@ -1,12 +1,17 @@
 package com.hechang.codeagent.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.hechang.codeagent.common.ResultUtils;
 import com.hechang.codeagent.constant.UserConstant;
 import com.hechang.codeagent.exception.BusinessException;
 import com.hechang.codeagent.exception.ErrorCode;
+import com.hechang.codeagent.model.dto.user.UserQueryRequest;
 import com.hechang.codeagent.model.enums.UserRoleEnum;
 import com.hechang.codeagent.model.vo.LoginUserVO;
+import com.hechang.codeagent.model.vo.UserVO;
+import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.hechang.codeagent.model.entity.User;
@@ -15,6 +20,9 @@ import com.hechang.codeagent.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 用户 服务层实现。
@@ -140,6 +148,63 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         request.getSession().removeAttribute(UserConstant.USER_LOGIN_STATE);
 
         return true;
+    }
+
+    @Override
+    public UserVO getUserVO(User user) {
+        if (user == null){
+            return null;
+        }
+        UserVO userVO = new UserVO();
+        BeanUtil.copyProperties(user, userVO);
+        return userVO;
+    }
+
+    @Override
+    public List<UserVO> getUserVOList(List<User> userList) {
+        if (CollUtil.isEmpty(userList)){
+            return new ArrayList<>();
+        }
+        return userList.stream().map(this::getUserVO).toList();
+    }
+
+    @Override
+    public QueryWrapper getQueryWrapper(UserQueryRequest userQueryRequest) {
+        if (userQueryRequest == null){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请求参数为空");
+        }
+        Long id = userQueryRequest.getId();
+        String userAccount = userQueryRequest.getUserAccount();
+        String userName = userQueryRequest.getUserName();
+        String userProfile = userQueryRequest.getUserProfile();
+        String userRole = userQueryRequest.getUserRole();
+        String sortField = userQueryRequest.getSortField();
+        String sortOrder = userQueryRequest.getSortOrder();
+
+        return QueryWrapper.create()
+                .eq(User::getId, id)
+                .eq(User::getUserRole, userRole)
+                .like(User::getUserAccount, userAccount)
+                .like(User::getUserName, userName)
+                .like(User::getUserProfile, userProfile)
+                .orderBy(sortField, "ascend".equals(sortOrder));
+    }
+
+    @Override
+    public Page<UserVO> listUserVO(UserQueryRequest userQueryRequest) {
+        //获取分页数据
+        int pageNum = userQueryRequest.getPageNum();
+        int pageSize = userQueryRequest.getPageSize();
+        //分页查询结果，对象是User，需要脱敏
+        Page<User> userPage = this.page(Page.of(pageNum, pageSize), this.getQueryWrapper(userQueryRequest));
+
+        //数据脱敏
+        Page<UserVO> userVOPage = new Page<>(pageNum, pageSize, userPage.getTotalRow());
+
+        List<UserVO> userVOList = this.getUserVOList(userPage.getRecords());
+        userVOPage.setRecords(userVOList);
+
+        return userVOPage;
     }
 
 

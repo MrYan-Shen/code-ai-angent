@@ -1,9 +1,15 @@
 package com.hechang.codeagent.service;
 
+import com.hechang.codeagent.model.dto.user.UserQueryRequest;
 import com.hechang.codeagent.model.vo.LoginUserVO;
+import com.hechang.codeagent.model.vo.UserVO;
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import com.hechang.codeagent.model.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.List;
 
 /**
  * 用户 服务层。
@@ -57,4 +63,28 @@ public interface UserService extends IService<User> {
      * @param request: 请求
      */
     boolean userLogout(HttpServletRequest request);
+
+    /**
+     * 获取脱敏后的单个用户信息
+     */
+    UserVO getUserVO(User user);
+
+    /**
+     * 获取脱敏后的用户列表
+     * @param userList: 用户列表
+     * @return 脱敏后的用户列表
+     */
+    List<UserVO> getUserVOList(List<User> userList);
+
+    /**
+     * 将查询请求转为QueryWrapper对象
+     * @param userQueryRequest: 用户查询条件
+     * @return 查询条件
+     */
+    QueryWrapper getQueryWrapper(UserQueryRequest userQueryRequest);
+
+    /**
+     * 分页查询
+     */
+    Page<UserVO> listUserVO(UserQueryRequest userQueryRequest);
 }
