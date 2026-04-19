@@ -10,6 +10,7 @@ import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * 代码文件保存类
@@ -51,14 +52,12 @@ public class CodeFileSaver {
      * @return 构建的目录
      */
     private static String buildUniqueDir(String bizType) {
-        //构建目录名称
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS");
+        String timestamp = LocalDateTime.now().format(formatter);
         String uniqueDirName = StrUtil.format("{}_{}_{}",
-                bizType, LocalDateTime.now().toString(), IdUtil.getSnowflakeNextIdStr());
-        //构建目录路径
+                bizType, timestamp, IdUtil.getSnowflakeNextIdStr());
         String dirPath = CODE_FILE_SAVE_ROOT_PATH + File.separator + uniqueDirName;
-        //创建目录
         FileUtil.mkdir(dirPath);
-        //返回目录路径
         return dirPath;
     }
 

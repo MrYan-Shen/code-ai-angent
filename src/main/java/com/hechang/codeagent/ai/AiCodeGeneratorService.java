@@ -4,6 +4,7 @@ package com.hechang.codeagent.ai;
 import com.hechang.codeagent.ai.model.HtmlCodeResult;
 import com.hechang.codeagent.ai.model.MultiFileCodeResult;
 import dev.langchain4j.service.SystemMessage;
+import reactor.core.publisher.Flux;
 
 /**
  * AI代码生成器Service
@@ -25,4 +26,22 @@ public interface AiCodeGeneratorService {
      */
     @SystemMessage(fromResource = "prompt/codegen-multi-file-system-prompt.txt")
     MultiFileCodeResult generateMultiFileCode(String prompt);
+
+    /**
+     * 生成 HTML 代码 (流式)
+     *
+     * @param userMessage 用户提示词
+     * @return AI 的输出结果
+     */
+    @SystemMessage(fromResource = "prompt/codegen-html-system-prompt.txt")
+    Flux<String> generateHtmlCodeStream(String userMessage);
+
+    /**
+     * 生成多文件代码 （流式）
+     *
+     * @param userMessage 用户提示词
+     * @return AI 的输出结果
+     */
+    @SystemMessage(fromResource = "prompt/codegen-multi-file-system-prompt.txt")
+    Flux<String> generateMultiFileCodeStream(String userMessage);
 }

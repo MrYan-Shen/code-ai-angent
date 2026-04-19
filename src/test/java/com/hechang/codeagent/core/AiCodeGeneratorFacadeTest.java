@@ -5,8 +5,10 @@ import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import reactor.core.publisher.Flux;
 
 import java.io.File;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,5 +22,17 @@ class AiCodeGeneratorFacadeTest {
     void generateCodeTest() {
         File file = aiCodeGeneratorFacade.generateCode("做一个聊天室网站,包含发言部分和留言板部分", CodeGenTypeEnum.MULTI_FILE);
         Assertions.assertNotNull(file);
+    }
+
+    @Test
+    void generateCodeAndSaveCodeStream() {
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateCodeAndSaveCodeStream("做一个聊天室网站,包含发言部分和留言板部分", CodeGenTypeEnum.MULTI_FILE);
+        //阻塞以等待所有数据收集完成
+        List<String> result = codeStream.collectList().block();
+        //验证结果
+        Assertions.assertNotNull(result);
+
+        String joined = String.join("", result);
+        Assertions.assertNotNull( joined );
     }
 }
