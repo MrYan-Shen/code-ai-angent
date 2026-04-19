@@ -52,7 +52,7 @@ public class CodeFileSaver {
      * @return 构建的目录
      */
     public static String buildUniqueDir(String bizType, Long appId) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd+HHmmss+SSS");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd+HH/mm");
         String timestamp = LocalDateTime.now().format(formatter);
         String uniqueDirName = StrUtil.format("{}_{}_{}_{}",
                 bizType, appId, timestamp, IdUtil.getSnowflakeNextIdStr());

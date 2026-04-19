@@ -2,6 +2,7 @@ package com.hechang.codeagent.controller;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.hechang.codeagent.annotation.AuthCheck;
 import com.hechang.codeagent.common.BaseResponse;
 import com.hechang.codeagent.common.DeleteRequest;
@@ -23,11 +24,14 @@ import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 应用 控制层。
@@ -281,21 +285,45 @@ public class AppController {
 
     /**
      * 应用聊天生成代码(流式SSE)
+     * 需解决问题：
+     *  1.空格丢失问题：前端使用EventSource对接目前的接口时，会出现空格丢失问题。
+     *      方案：将Flux额外封装成 ServerSentEvent，把原始数据放到JSON的data字段中，并返回给前端。
+     *  2.主动告诉欠打UN生成完成
+     *      在SSE中，当服务器关闭连接时，会触发客户端的onclose事件，这是前端判断流结束的标准式。
+     *      但是，onclose事件会在连接正常结束（服务器主动关闭）和异常中断（如网络问题）时都触发，
+     *      前端就很难区分到底后端是正常响应了所有数据、还是异常中断了。
+     *    因此，我们最好在后端添加一个明确的done事件，这样可以更清晰地区分流的正常结束和异常中断。
      * @param appId 应用id
      * @param message 消息
      * @param request 请求
      * @return 生成的代码
      */
     @GetMapping(value = "/chat/gen/code",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chatToGenCode(@RequestParam Long appId,
-                                      @RequestParam String message,
-                                      HttpServletRequest request) {
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
+                                                      @RequestParam String message,
+                                                      HttpServletRequest request) {
         // 参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
         // 获取用户
         User loginUser = userService.getLoginUser(request);
         // 调用服务生成代码（流式）
-        return appService.chatToGenCode(appId, message, loginUser);
+        Flux<String> codeFlux = appService.chatToGenCode(appId, message, loginUser);
+        return codeFlux
+                .map(code -> {
+                    // 将内容包装成JSON对象
+                    Map<String, String> wrapper = Map.of("data", code);
+                    String jsonData = JSONUtil.toJsonStr(wrapper);
+                    return ServerSentEvent.builder(code)
+                            .data(jsonData)
+                            .build();
+                })
+                .concatWith(Mono.just(
+                //发送结束事件
+                ServerSentEvent.<String>builder()
+                        .event("done")
+                        .data("")
+                        .build()
+                ));
     }
 }
