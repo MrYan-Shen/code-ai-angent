@@ -3,6 +3,8 @@ package com.hechang.codeagent.core;
 import com.hechang.codeagent.ai.AiCodeGeneratorService;
 import com.hechang.codeagent.ai.model.HtmlCodeResult;
 import com.hechang.codeagent.ai.model.MultiFileCodeResult;
+import com.hechang.codeagent.core.parser.CodeParserExecutor;
+import com.hechang.codeagent.core.saver.CodeFileSaverExecutor;
 import com.hechang.codeagent.exception.BusinessException;
 import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
@@ -27,30 +29,30 @@ public class AiCodeGeneratorFacade {
      * 生成并保存Html代码
      * @param userMessage 用户输入
      * @return 保存的目录
-     */
+     *//*
     private File generateAndSaveHtmlCode(String userMessage) {
         HtmlCodeResult htmlCodeResult = aiCodeGeneratorService.generateCode(userMessage);
 
         return CodeFileSaver.saveHtmlCodeResult(htmlCodeResult);
     }
 
-    /**
+    *//**
      * 生成并保存多文件代码
      * @param userMessage 用户输入
      * @return 保存的目录
-     */
+     *//*
     private File generateAndSaveMultiFileCode(String userMessage) {
         MultiFileCodeResult multiFileCodeResult = aiCodeGeneratorService.generateMultiFileCode(userMessage);
 
         return CodeFileSaver.saveMultiFileCodeResult(multiFileCodeResult);
     }
 
-    /**
+    *//**
      * 统一入口：生成代码并保存，非流式
      * @param userMessage 用户输入
      * @param codeGenType 生成模式
      * @return 保存的目录
-     */
+     *//*
     public File generateCode(String userMessage, CodeGenTypeEnum codeGenType) {
         if (codeGenType == null){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR ,"请选择生成模式");
@@ -64,7 +66,7 @@ public class AiCodeGeneratorFacade {
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR ,errorMessage);
             }
         };
-    }
+    }*/
 
 
     //针对单文件和多文件的生成模式（流式），各提供一个“生成代码并保存”的方法，核心逻辑是：拼接AI实时响应的字符串，并在流式返回完成后解析字符串并保存代码文件
@@ -72,7 +74,7 @@ public class AiCodeGeneratorFacade {
      * 生成 HTML 模式的代码并保存（流式）
      * @param userMessage 用户输入
      * @return 保存的目录
-     */
+     *//*
     private Flux<String> generateAndSaveHtmlCodeStream(String userMessage) {
         Flux<String> result = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
         //拼接AI实时响应的流
@@ -93,11 +95,11 @@ public class AiCodeGeneratorFacade {
                 });
     }
 
-    /**
+    *//**
      * 生成 多文件 模式的代码并保存（流式）
      * @param userMessage 用户输入
      * @return 保存的目录
-     */
+     *//*
     private Flux<String> generateAndSaveMultiFileCodeStream(String userMessage) {
         Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
         //拼接AI实时响应的流
@@ -118,12 +120,12 @@ public class AiCodeGeneratorFacade {
                 });
     }
 
-    /**
+    *//**
      * 统一入口：生成代码并保存（流式）
      * @param userMessage 用户输入
      * @param codeGenType 生成模式
      * @return 保存的目录
-     */
+     *//*
     public Flux<String> generateCodeAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType) {
         if (codeGenType == null){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR ,"请选择生成模式");
@@ -132,6 +134,88 @@ public class AiCodeGeneratorFacade {
         return switch (codeGenType) {
             case HTML -> generateAndSaveHtmlCodeStream(userMessage);
             case MULTI_FILE -> generateAndSaveMultiFileCodeStream(userMessage);
+            default -> {
+                String errorMessage = "不支持的生成类型" + codeGenType.getValue();
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR ,errorMessage);
+            }
+        };
+    }*/
+
+    //优化后
+    /**
+     * 通过流式代码处理代码保存文件 (优化后)
+     * @param codeStream 代码流
+     * @param codeGenType 代码生成类型
+     * @return 流式响应
+     */
+    private Flux<String> processCodeStream(Flux<String> codeStream,CodeGenTypeEnum codeGenType){
+        StringBuilder codeBuilder = new StringBuilder();
+        return codeStream
+                .doOnNext(codeBuilder::append) //实时收集代码片段
+                .doOnComplete(() -> {
+                    //流式返回完成后，解析字符串并保存代码文件
+                    try {
+                        String completeCode = codeBuilder.toString();
+                        //使用执行器解析代码
+                        Object parserResult = CodeParserExecutor.executeParser(completeCode, codeGenType);
+                        //使用执行器保存代码
+                        File saveDir = CodeFileSaverExecutor.executeSaver(parserResult,codeGenType);
+                        log.info("代码保存成功，保存目录为：{}", saveDir.getAbsolutePath());
+                    } catch (Exception e) {
+                        log.error("代码保存失败：{}", e.getMessage());
+                    }
+                });
+    }
+
+    /**
+     * 统一入口：根据类型生成并保存代码（非流式-优化后）
+     * @param userMessage 用户输入
+     * @param codeGenType 生成类型
+     * @return 保存的目录
+     */
+    public File generateAndSaveCode(String userMessage, CodeGenTypeEnum codeGenType) {
+        if (codeGenType == null){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR ,"请选择生成模式");
+        }
+        // 根据 类型 返回生成的代码
+        return switch (codeGenType) {
+            case HTML -> {
+                HtmlCodeResult result = aiCodeGeneratorService.generateCode(userMessage);
+                //yield:可用于返回值
+                yield CodeFileSaverExecutor.executeSaver(result, codeGenType);
+            }
+            case MULTI_FILE -> {
+                MultiFileCodeResult result = aiCodeGeneratorService.generateMultiFileCode(userMessage);
+                yield CodeFileSaverExecutor.executeSaver(result, codeGenType);
+            }
+            default -> {
+                String errorMessage = "不支持的生成类型" + codeGenType.getValue();
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR ,errorMessage);
+            }
+        };
+    }
+
+    /**
+     * 统一入口：根据类型生成并保存代码（流式-优化后）
+     * @param userMessage 用户输入
+     * @param codeGenType 生成类型
+     * @return 保存的目录
+     */
+    public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType) {
+        if (codeGenType == null){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR ,"请选择生成模式");
+        }
+        // 根据 类型 返回生成的代码
+        return switch (codeGenType) {
+            case HTML -> {
+                Flux<String> result = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
+                //yield:可用于返回值
+                yield processCodeStream(result, codeGenType);
+            }
+            case MULTI_FILE -> {
+                Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
+                yield processCodeStream(result, codeGenType);
+            }
             default -> {
                 String errorMessage = "不支持的生成类型" + codeGenType.getValue();
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR ,errorMessage);

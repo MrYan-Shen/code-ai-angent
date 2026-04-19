@@ -51,7 +51,7 @@ public class CodeFileSaver {
      * 构建一个唯一的目录（用时间+雪花id确保唯一性）: tmp/code_output/bizType_时间_雪花ID
      * @return 构建的目录
      */
-    private static String buildUniqueDir(String bizType) {
+    public static String buildUniqueDir(String bizType) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS");
         String timestamp = LocalDateTime.now().format(formatter);
         String uniqueDirName = StrUtil.format("{}_{}_{}",

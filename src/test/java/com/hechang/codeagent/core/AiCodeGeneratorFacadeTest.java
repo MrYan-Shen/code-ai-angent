@@ -18,7 +18,7 @@ class AiCodeGeneratorFacadeTest {
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
 
-    @Test
+/*    @Test
     void generateCodeTest() {
         File file = aiCodeGeneratorFacade.generateCode("做一个聊天室网站,包含发言部分和留言板部分", CodeGenTypeEnum.MULTI_FILE);
         Assertions.assertNotNull(file);
@@ -27,6 +27,24 @@ class AiCodeGeneratorFacadeTest {
     @Test
     void generateCodeAndSaveCodeStream() {
         Flux<String> codeStream = aiCodeGeneratorFacade.generateCodeAndSaveCodeStream("做一个聊天室网站,包含发言部分和留言板部分", CodeGenTypeEnum.MULTI_FILE);
+        //阻塞以等待所有数据收集完成
+        List<String> result = codeStream.collectList().block();
+        //验证结果
+        Assertions.assertNotNull(result);
+
+        String joined = String.join("", result);
+        Assertions.assertNotNull( joined );
+    }*/
+
+    @Test
+    void generateAndSaveCode() {
+        File file = aiCodeGeneratorFacade.generateAndSaveCode("做一个聊天室网站,包含发言部分和留言板部分,网站要帅气，酷炫一些", CodeGenTypeEnum.MULTI_FILE);
+        Assertions.assertNotNull(file);
+    }
+
+    @Test
+    void generateAndSaveCodeStream() {
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("做一个聊天室网站,包含发言部分和留言板部分,网站要帅气，酷炫一些", CodeGenTypeEnum.MULTI_FILE);
         //阻塞以等待所有数据收集完成
         List<String> result = codeStream.collectList().block();
         //验证结果
