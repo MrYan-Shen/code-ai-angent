@@ -32,11 +32,11 @@ public abstract class CodeFileSaverTemplate<T> {
      * @param result 代码结果对象
      * @return 保存的目录
      */
-    public final File saveCode(T result) {
+    public final File saveCode(T result, Long appId) {
         // 1. 验证输入
         validateInput(result);
         // 2. 构建唯一目录
-        String baseDirPath = buildUniqueDir();
+        String baseDirPath = buildUniqueDir(appId);
         // 3. 保存文件（具体实现交给子类）
         saveFiles(result, baseDirPath);
         // 4. 返回文件目录对象
@@ -72,10 +72,13 @@ public abstract class CodeFileSaverTemplate<T> {
      *
      * @return 目录路径
      */
-    protected String buildUniqueDir() {
+    protected String buildUniqueDir(Long appId) {
+        if (appId == null){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "appId不能为空");
+        }
         String codeType = getCodeType().getValue();
 
-        return CodeFileSaver.buildUniqueDir(codeType);
+        return CodeFileSaver.buildUniqueDir(codeType, appId);
     }
 
     /**
