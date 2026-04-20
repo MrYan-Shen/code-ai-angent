@@ -10,6 +10,7 @@ import com.hechang.codeagent.model.vo.AppVO;
 import reactor.core.publisher.Flux;
 
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -61,4 +62,13 @@ public interface AppService extends IService<App> {
      * @return 列表
      */
     String deployApp(Long appId, User loginUser);
+
+    /**
+     * 重写mybatis-flex的删除方法，添加容错设计，
+     * 即使对话历史删除失败，也不会阻止应用的删除操作，只是记录错误日志，确保核心业务的稳定性
+     *
+     * @param id  id
+     * @return 列表
+     */
+    boolean removeById(Serializable id);
 }

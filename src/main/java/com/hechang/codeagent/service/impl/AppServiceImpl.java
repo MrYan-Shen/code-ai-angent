@@ -5,6 +5,8 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.hechang.codeagent.model.enums.ChatHistoryMessageTypeEnum;
+import com.hechang.codeagent.service.ChatHistoryService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.hechang.codeagent.constant.AppConstant;
@@ -49,6 +51,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private ChatHistoryService chatHistoryService;
 
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
@@ -134,8 +139,29 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         if (codeGenTypeEnum == null){
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码生成类型");
         }
+        // 通过效验后，添加用户消息到对话历史
+        chatHistoryService.addChatMessage(appId, userMessage, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
         // 调用 AI 生成代码
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(userMessage, codeGenTypeEnum, appId);
+        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(userMessage, codeGenTypeEnum, appId);
+        // 收集AI响应得到内容并记录到对话历史
+        StringBuilder aiResponseBuilder = new StringBuilder();
+        return contentFlux
+                .map(chunk -> {
+                    aiResponseBuilder.append(chunk);
+                    return chunk;
+                })
+                .doOnComplete(() -> {
+                    String aiResponse = aiResponseBuilder.toString();
+                    if (StrUtil.isNotBlank(aiResponse)){
+                        // 保存AI响应到对话历史
+                        chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                    }
+                })
+                .doOnError(error -> {
+                    //如果AI回复失败，也要记录错误信息
+                    String errorMessage = "AI回复失败" + error.getMessage();
+                    chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                });
     }
 
     @Override
@@ -212,6 +238,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST,deployKey);
     }
 
+
+    @Override
+    public boolean removeById(Serializable id) {
+        if (id == null) {
+            return false;
+        }
+        // 转换为 Long 类型
+        Long appId = Long.valueOf(id.toString());
+        if (appId <= 0) {
+            return false;
+        }
+        //先删除关联的对话历史
+        try {
+            chatHistoryService.deleteByAppId(appId);
+        } catch (Exception e) {
+            //记录日志但不阻止应用删除
+             log.error("删除应用关联对话历史失败：{}",e.getMessage());
+        }
+        //删除应用
+        return super.removeById(id);
+    }
 
 
 }
