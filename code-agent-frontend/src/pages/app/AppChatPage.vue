@@ -187,6 +187,13 @@
               frameborder="0"
               @load="onIframeLoad"
           ></iframe>
+          <!-- 调试信息 -->
+          <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 8px; font-size: 12px; z-index: 9999;">
+            <div>previewUrl: {{ previewUrl ? '✅ 已设置' : '❌ 未设置' }}</div>
+            <div v-if="previewUrl">URL: {{ previewUrl }}</div>
+            <div>isGenerating: {{ isGenerating }}</div>
+            <div>previewReady: {{ previewReady }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -218,6 +225,7 @@ import {
   getAppVoById,
   deployApp as deployAppApi,
   deleteApp as deleteAppApi,
+  getPreviewPath,
 } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { CodeGenTypeEnum, formatCodeGenType } from '@/utils/codeGenTypes'
@@ -227,7 +235,7 @@ import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import aiAvatar from '@/assets/aiAvatar.png'
-import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
+import { API_BASE_URL } from '@/config/env'
 import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 
 import {
@@ -525,14 +533,18 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
     eventSource.addEventListener('done', function () {
       if (streamCompleted) return
 
+      console.log('✅ SSE流式响应完成')
       streamCompleted = true
       isGenerating.value = false
       eventSource?.close()
 
       // 延迟更新预览，确保后端已完成处理
+      console.log('⏳ 1秒后将更新预览...')
       setTimeout(async () => {
-        await fetchAppInfo()
-        updatePreview()
+        console.log('🔄 开始更新预览')
+        // 直接调用 updatePreview，不需要再调用 fetchAppInfo
+        await updatePreview()
+        console.log('✅ 预览更新流程完成')
       }, 1000)
     })
 
@@ -592,12 +604,32 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 }
 
 // 更新预览
-const updatePreview = () => {
-  if (appId.value) {
-    const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    const newPreviewUrl = getStaticPreviewUrl(codeGenType, appId.value)
-    previewUrl.value = newPreviewUrl
-    previewReady.value = true
+const updatePreview = async () => {
+  if (!appId.value) {
+    console.warn('appId 为空，无法更新预览')
+    return
+  }
+  
+  try {
+    console.log('开始获取预览路径, appId:', appId.value)
+    // 调用后端接口获取最新的预览路径
+    const res = await getPreviewPath({ appId: appId.value as unknown as number })
+    console.log('获取预览路径响应:', res)
+    
+    if (res.data.code === 0 && res.data.data) {
+      const previewDirName = res.data.data
+      // 构建完整的预览URL
+      previewUrl.value = `${API_BASE_URL}/static/${previewDirName}/`
+      previewReady.value = true
+      console.log('✅ 预览URL已更新:', previewUrl.value)
+      console.log('previewReady:', previewReady.value)
+    } else {
+      console.error('❌ 获取预览路径失败:', res.data.message)
+      message.warning('获取预览路径失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('❌ 获取预览路径异常:', error)
+    message.error('获取预览路径异常')
   }
 }
 
@@ -690,11 +722,15 @@ const openDeployedSite = () => {
 
 // iframe加载完成
 const onIframeLoad = () => {
+  console.log('🌐 iframe加载完成')
   previewReady.value = true
   const iframe = document.querySelector('.preview-iframe') as HTMLIFrameElement
   if (iframe) {
+    console.log('✅ iframe元素找到，初始化可视化编辑器')
     visualEditor.init(iframe)
     visualEditor.onIframeLoad()
+  } else {
+    console.warn('⚠️ 未找到iframe元素')
   }
 }
 

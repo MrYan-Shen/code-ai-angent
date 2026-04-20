@@ -23,12 +23,14 @@ import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/app")
+@Slf4j
 public class AppController {
 
     @Resource
@@ -312,11 +315,30 @@ public class AppController {
         return codeFlux
                 .map(code -> {
                     // 将内容包装成JSON对象
-                    Map<String, String> wrapper = Map.of("data", code);
+                    Map<String, String> wrapper = Map.of("d", code);
                     String jsonData = JSONUtil.toJsonStr(wrapper);
-                    return ServerSentEvent.builder(code)
+                    return ServerSentEvent.<String>builder()
                             .data(jsonData)
                             .build();
+                })
+                .onErrorResume(error -> {
+                    // 处理错误情况，发送business-error事件
+                    log.error("生成代码失败: {}", error.getMessage(), error);
+                    Map<String, Object> errorWrapper = Map.of(
+                        "message", error.getMessage() != null ? error.getMessage() : "生成代码失败"
+                    );
+                    String errorJson = JSONUtil.toJsonStr(errorWrapper);
+                    return Mono.just(
+                        ServerSentEvent.<String>builder()
+                            .event("business-error")
+                            .data(errorJson)
+                            .build()
+                    ).concatWith(Mono.just(
+                        ServerSentEvent.<String>builder()
+                            .event("done")
+                            .data("")
+                            .build()
+                    ));
                 })
                 .concatWith(Mono.just(
                 //发送结束事件
@@ -325,6 +347,58 @@ public class AppController {
                         .data("")
                         .build()
                 ));
+    }
+
+    /**
+     * 获取应用最新代码的预览URL
+     *
+     * @param appId 应用id
+     * @return 预览URL路径（不包含域名）
+     */
+    @GetMapping("/preview/path")
+    public BaseResponse<String> getPreviewPath(@RequestParam Long appId) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
+        // 查询应用信息
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        
+        // 获取应用的代码生成类型
+        String codeGenType = app.getCodeGenType();
+        // 构建查找前缀：codeGenType_appId_
+        String namePrefix = codeGenType + "_" + appId + "_";
+        
+        // 在 code_output 目录下查找匹配的文件夹
+        File codeOutputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR);
+        if (!codeOutputDir.exists() || !codeOutputDir.isDirectory()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码输出目录不存在");
+        }
+        
+        // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
+        File sourceDir = null;
+        long latestModified = 0;
+        
+        File[] matchedDirs = codeOutputDir.listFiles((dir, name) -> 
+            dir.isDirectory() && name.startsWith(namePrefix)
+        );
+        
+        if (matchedDirs != null) {
+            // 选择最后修改时间最新的文件夹
+            for (File dir : matchedDirs) {
+                if (dir.lastModified() > latestModified) {
+                    latestModified = dir.lastModified();
+                    sourceDir = dir;
+                }
+            }
+        }
+        
+        // 检查是否找到源目录
+        if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
+        }
+        
+        log.info("找到应用代码目录: {}", sourceDir.getAbsolutePath());
+        // 返回相对路径（文件夹名称）
+        return ResultUtils.success(sourceDir.getName());
     }
 
     /**
