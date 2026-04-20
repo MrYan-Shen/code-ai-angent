@@ -1,6 +1,7 @@
 package com.hechang.codeagent.core;
 
 import com.hechang.codeagent.ai.AiCodeGeneratorService;
+import com.hechang.codeagent.ai.AiCodeGeneratorServiceFactory;
 import com.hechang.codeagent.ai.model.HtmlCodeResult;
 import com.hechang.codeagent.ai.model.MultiFileCodeResult;
 import com.hechang.codeagent.core.parser.CodeParserExecutor;
@@ -21,8 +22,10 @@ import java.io.File;
 @Service
 @Slf4j
 public class AiCodeGeneratorFacade {
+//    @Resource
+//    private AiCodeGeneratorService aiCodeGeneratorService;
     @Resource
-    private AiCodeGeneratorService aiCodeGeneratorService;
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     //针对单文件和多文件的生成模式（非流式），各提供一个“生成代码并保存”的方法，核心逻辑是：拼接AI实时响应的字符串，并在流式返回完成后解析字符串并保存代码文件
     /**
@@ -180,11 +183,13 @@ public class AiCodeGeneratorFacade {
         // 根据 类型 返回生成的代码
         return switch (codeGenType) {
             case HTML -> {
+                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
                 HtmlCodeResult result = aiCodeGeneratorService.generateCode(userMessage);
                 //yield:可用于返回值
                 yield CodeFileSaverExecutor.executeSaver(result, codeGenType, appId);
             }
             case MULTI_FILE -> {
+                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
                 MultiFileCodeResult result = aiCodeGeneratorService.generateMultiFileCode(userMessage);
                 yield CodeFileSaverExecutor.executeSaver(result, codeGenType, appId);
             }
@@ -208,11 +213,13 @@ public class AiCodeGeneratorFacade {
         // 根据 类型 返回生成的代码
         return switch (codeGenType) {
             case HTML -> {
+                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
                 Flux<String> result = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
                 //yield:可用于返回值
                 yield processCodeStream(result, codeGenType, appId);
             }
             case MULTI_FILE -> {
+                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
                 Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
                 yield processCodeStream(result, codeGenType, appId);
             }
