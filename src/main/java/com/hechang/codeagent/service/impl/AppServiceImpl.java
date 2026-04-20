@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
  * @author chang
  */
 @Service
+@Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppService{
 
     @Resource
@@ -136,4 +137,81 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         // 调用 AI 生成代码
         return aiCodeGeneratorFacade.generateAndSaveCodeStream(userMessage, codeGenTypeEnum, appId);
     }
+
+    @Override
+    public String deployApp(Long appId, User loginUser) {
+        // 参数验证
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
+        // 获取应用信息
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 验证用户是否有权限访问该应用，仅应用创建者可以生成代码
+        if (!app.getUserId().equals(loginUser.getId())){
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "没有权限部署该应用");
+        }
+        // 检查是否已有deployKey，如果没有则生成新的
+        String deployKey = app.getDeployKey();
+        boolean isRedeploy = StrUtil.isNotBlank(deployKey);
+        if (!isRedeploy) {
+            // 首次部署，生成6位的deployKey (大小写字母 + 数字)
+            deployKey = RandomUtil.randomString(6);
+        } else {
+            log.info("应用已存在deployKey: {}，将进行重新部署", deployKey);
+        }
+        // 获取应用的代码生成类型
+        String codeGenType = app.getCodeGenType();
+        // 构建查找前缀：codeGenType_appId_
+        String namePrefix = codeGenType + "_" + appId + "_";
+        
+        // 在 code_output 目录下查找匹配的文件夹
+        File codeOutputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR);
+        if (!codeOutputDir.exists() || !codeOutputDir.isDirectory()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码输出目录不存在");
+        }
+        
+        // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
+        File sourceDir = null;
+        long latestModified = 0;
+        
+        File[] matchedDirs = codeOutputDir.listFiles((dir, name) -> 
+            dir.isDirectory() && name.startsWith(namePrefix)
+        );
+        
+        if (matchedDirs != null) {
+            // 选择最后修改时间最新的文件夹
+            for (File dir : matchedDirs) {
+                if (dir.lastModified() > latestModified) {
+                    latestModified = dir.lastModified();
+                    sourceDir = dir;
+                }
+            }
+        }
+        
+        // 检查是否找到源目录
+        if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
+        }
+        
+        log.info("找到应用代码目录: {}", sourceDir.getAbsolutePath());
+        // 复制文件到部署目录
+        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
+        try {
+            FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
+        } catch (Exception e){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"部署失败：" + e.getMessage());
+        }
+        // 更新应用的deployKey和部署时间
+        App updateApp = new App();
+        updateApp.setId(appId);
+        updateApp.setDeployKey(deployKey);
+        updateApp.setDeployedTime(LocalDateTime.now());
+        boolean updateResult = this.updateById(updateApp);
+        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR,"更新应用部署信息失败");
+        // 返回可访问的 URL
+        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST,deployKey);
+    }
+
+
+
 }

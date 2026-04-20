@@ -5,6 +5,7 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.hechang.codeagent.ai.model.HtmlCodeResult;
 import com.hechang.codeagent.ai.model.MultiFileCodeResult;
+import com.hechang.codeagent.constant.AppConstant;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 
 import java.io.File;
@@ -18,7 +19,7 @@ import java.time.format.DateTimeFormatter;
 public class CodeFileSaver {
 
     //文件保存的根目录
-    private static final String CODE_FILE_SAVE_ROOT_PATH = System.getProperty("user.dir") + "/src/main/tmp/code_output";
+    private static final String CODE_FILE_SAVE_ROOT_PATH = AppConstant.CODE_OUTPUT_ROOT_DIR;
 
 //    /**
 //     * 保存 Html代码结果
@@ -48,7 +49,7 @@ public class CodeFileSaver {
 //    }
 
     /**
-     * 构建一个唯一的目录（用时间+雪花id确保唯一性）: tmp/code_output/bizType_时间_雪花ID
+     * 构建一个唯一的目录（用生成类型 + 应用id + 时间 +雪花id确保唯一性）: tmp/code_output/bizType_应用id_时间_雪花ID
      * @return 构建的目录
      */
     public static String buildUniqueDir(String bizType, Long appId) {

@@ -61,7 +61,7 @@ public class AppController {
         // 参数校验
         String appName = appAddRequest.getAppName();
         String initPrompt = appAddRequest.getInitPrompt();
-
+        ThrowUtils.throwIf(StrUtil.isBlank(appName), ErrorCode.PARAMS_ERROR, "应用名称不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
         // 获取当前登录用户
         User loginUser = userService.getLoginUser(request);
@@ -326,4 +326,24 @@ public class AppController {
                         .build()
                 ));
     }
+
+    /**
+     * 应用部署
+     *
+     * @param appDeployRequest 应用部署请求
+     * @param request 请求
+     * @return 应用部署结果
+     */
+    @PostMapping("/deploy")
+    public BaseResponse<String> deployApp(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest request){
+        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
+        Long appId = appDeployRequest.getAppId();
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
+        // 获取当前登录用户信息
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务部署应用
+        String deployApp = appService.deployApp(appId, loginUser);
+        return ResultUtils.success(deployApp);
+    }
+
 }
