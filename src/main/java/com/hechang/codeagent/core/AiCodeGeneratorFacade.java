@@ -1,14 +1,24 @@
 package com.hechang.codeagent.core;
 
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.hechang.codeagent.ai.AiCodeGeneratorService;
 import com.hechang.codeagent.ai.AiCodeGeneratorServiceFactory;
 import com.hechang.codeagent.ai.model.HtmlCodeResult;
 import com.hechang.codeagent.ai.model.MultiFileCodeResult;
+import com.hechang.codeagent.ai.model.message.AiResponseMessage;
+import com.hechang.codeagent.ai.model.message.ToolExecutedMessage;
+import com.hechang.codeagent.ai.model.message.ToolRequestMessage;
+import com.hechang.codeagent.constant.AppConstant;
+import com.hechang.codeagent.core.builder.VueProjectBuilder;
 import com.hechang.codeagent.core.parser.CodeParserExecutor;
 import com.hechang.codeagent.core.saver.CodeFileSaverExecutor;
 import com.hechang.codeagent.exception.BusinessException;
 import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.service.TokenStream;
+import dev.langchain4j.service.tool.ToolExecution;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +36,9 @@ public class AiCodeGeneratorFacade {
 //    private AiCodeGeneratorService aiCodeGeneratorService;
     @Resource
     private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
+
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
 
     //针对单文件和多文件的生成模式（非流式），各提供一个“生成代码并保存”的方法，核心逻辑是：拼接AI实时响应的字符串，并在流式返回完成后解析字符串并保存代码文件
     /**
@@ -244,5 +257,40 @@ public class AiCodeGeneratorFacade {
             }
         };
     }
+
+    /**
+     * 将 TokenStream 转换为 Flux<String>
+     * @param tokenStream TokenStream
+     * @return Flux<String>
+     */
+    private Flux<String> processTokenStream(TokenStream tokenStream,Long appId){
+        return Flux.create(sink -> {
+            tokenStream.onPartialResponse((String partialResponse) -> {
+                        AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
+                        sink.next(JSONUtil.toJsonStr(aiResponseMessage));
+                    })
+                    .onPartialToolExecutionRequest((index, toolExecutionRequest) -> {
+                        ToolRequestMessage toolRequestMessage = new ToolRequestMessage(toolExecutionRequest);
+                        sink.next(JSONUtil.toJsonStr(toolRequestMessage));
+                    })
+                    .onToolExecuted((ToolExecution toolExecution) -> {
+                        ToolExecutedMessage toolExecutedMessage = new ToolExecutedMessage(toolExecution);
+                        sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
+                    })
+                    .onCompleteResponse((ChatResponse response) -> {
+                        // 执行 Vue 项目构建（同步执行，确保预览时项目已就绪）
+                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId;
+                        vueProjectBuilder.buildProject(projectPath);
+                        sink.complete();
+                    })
+                    .onError((Throwable error) -> {
+                        log.error("processTokenStream error: {}", error.getMessage());
+                        sink.error(error);
+                    })
+                    .start();
+        });
+    }
+
+
 
 }
