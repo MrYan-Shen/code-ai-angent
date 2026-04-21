@@ -16,7 +16,7 @@ public class VueProjectBuilder {
 
     /**
      * 异步构建 Vue 项目
-     *
+     *      java21新特性——虚拟线程
      * @param projectPath 项目根目录路径
      */
     public void buildProjectAsync(String projectPath) {
@@ -74,7 +74,7 @@ public class VueProjectBuilder {
      */
     private boolean executeNpmInstall(File projectDir) {
         log.info("执行 npm install...");
-        String command = String.format("%s install", buildCommand("npm"));
+        String command = String.format("%s install", buildCommand());
         return executeCommand(projectDir, command, 300); // 5分钟超时
     }
 
@@ -83,21 +83,20 @@ public class VueProjectBuilder {
      */
     private boolean executeNpmBuild(File projectDir) {
         log.info("执行 npm run build...");
-        String command = String.format("%s run build", buildCommand("npm"));
+        String command = String.format("%s run build", buildCommand());
         return executeCommand(projectDir, command, 180); // 3分钟超时
     }
 
     /**
      * 根据操作系统构造命令
      *
-     * @param baseCommand 基础命令
      * @return 命令字符串
      */
-    private String buildCommand(String baseCommand) {
+    private String buildCommand() {
         if (isWindows()) {
-            return baseCommand + ".cmd";
+            return "npm" + ".cmd";
         }
-        return baseCommand;
+        return "npm";
     }
 
     /**

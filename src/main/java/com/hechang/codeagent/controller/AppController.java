@@ -364,8 +364,6 @@ public class AppController {
         
         // 获取应用的代码生成类型
         String codeGenType = app.getCodeGenType();
-        // 构建查找前缀：codeGenType_appId_
-        String namePrefix = codeGenType + "_" + appId + "_";
         
         // 在 code_output 目录下查找匹配的文件夹
         File codeOutputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR);
@@ -373,20 +371,31 @@ public class AppController {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码输出目录不存在");
         }
         
-        // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
         File sourceDir = null;
-        long latestModified = 0;
         
-        File[] matchedDirs = codeOutputDir.listFiles((dir, name) -> 
-            dir.isDirectory() && name.startsWith(namePrefix)
-        );
-        
-        if (matchedDirs != null) {
-            // 选择最后修改时间最新的文件夹
-            for (File dir : matchedDirs) {
-                if (dir.lastModified() > latestModified) {
-                    latestModified = dir.lastModified();
-                    sourceDir = dir;
+        // VUE_PROJECT 类型使用固定目录名，其他类型使用前缀匹配
+        if ("vue_project".equals(codeGenType)) {
+            // Vue 项目使用固定目录名：vue_project_{appId}
+            String dirName = codeGenType + "_" + appId;
+            sourceDir = new File(codeOutputDir, dirName);
+            log.info("Vue项目，尝试查找目录: {}", sourceDir.getAbsolutePath());
+        } else {
+            // 其他类型使用前缀匹配：codeGenType_appId_
+            String namePrefix = codeGenType + "_" + appId + "_";
+            
+            // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
+            long latestModified = 0;
+            File[] matchedDirs = codeOutputDir.listFiles((dir, name) -> 
+                dir.isDirectory() && name.startsWith(namePrefix)
+            );
+            
+            if (matchedDirs != null) {
+                // 选择最后修改时间最新的文件夹
+                for (File dir : matchedDirs) {
+                    if (dir.lastModified() > latestModified) {
+                        latestModified = dir.lastModified();
+                        sourceDir = dir;
+                    }
                 }
             }
         }
