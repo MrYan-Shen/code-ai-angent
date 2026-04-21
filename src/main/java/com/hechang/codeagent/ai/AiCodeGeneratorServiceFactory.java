@@ -3,8 +3,7 @@ package com.hechang.codeagent.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
-import com.hechang.codeagent.exception.BusinessException;
-import com.hechang.codeagent.exception.ErrorCode;
+import com.hechang.codeagent.ai.tools.FileWriteTool;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import com.hechang.codeagent.service.ChatHistoryService;
 
@@ -37,7 +36,7 @@ public class AiCodeGeneratorServiceFactory {
     private ChatHistoryService chatHistoryService;
 
     @Resource
-    private StreamingChatModel streamingChatModel;
+    private StreamingChatModel reasoningStreamingChatModel;
 
 
     /**
@@ -67,7 +66,18 @@ public class AiCodeGeneratorServiceFactory {
     }
 
     /**
-     * 根据 appId 获取服务
+     * 构造缓存键
+     *
+     * @param appId 应用 id
+     * @param codeGenType 生成类型
+     * @return 缓存键
+     */
+    private String buildCacheKey(long appId, CodeGenTypeEnum codeGenType) {
+        return appId + "_" + codeGenType.getValue();
+    }
+
+    /**
+     * 根据 appId 获取服务 （带缓存）
      *
      * @param appId       应用 id
      * @param codeGenType 生成类型
@@ -96,11 +106,28 @@ public class AiCodeGeneratorServiceFactory {
                 .build();
         // 从数据库加载历史对话到记忆中
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 25);
-        return AiServices.builder(AiCodeGeneratorService.class)
-                .chatModel(chatModel)
-                .streamingChatModel(streamingChatModel)
-                .chatMemory(chatMemory)
-                .build();
+        // 根据代码生成类型选择不同的模型配置
+        return switch (codeGenType) {
+            case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
+                    .chatModel(chatModel)
+                    .streamingChatModel(reasoningStreamingChatModel)
+                    //必须指定chatMemoryProvider的配置，为每个 memoryId 绑定会话记忆，否则调用对话法时可能会报错。
+                    .chatMemoryProvider(memoryId -> chatMemory)
+                    .tools(new FileWriteTool())
+                    // 指定 hallucinatedToolNameStrategy(幻觉工具名称策略)，当工具调用失败时，返回错误信息给AI
+                    .hallucinatedToolNameStrategy(toolExecutionRequest ->
+                        ToolExecutionResultMessage.from(
+                                toolExecutionRequest,
+                                "错误，不能被当做工具调用：" + toolExecutionRequest.name()
+                        ))
+                    .build();
+            case HTML, MULTI_FILE -> AiServices.builder(AiCodeGeneratorService.class)
+                    .chatModel(chatModel)
+                    .streamingChatModel(reasoningStreamingChatModel)
+                    .chatMemory(chatMemory)
+                    .build();
+        };
+
     }
 
     /**
@@ -113,14 +140,4 @@ public class AiCodeGeneratorServiceFactory {
         return getAiCodeGeneratorService(0);
     }
 
-    /**
-     * 构造缓存键
-     *
-     * @param appId 应用 id
-     * @param codeGenType 生成类型
-     * @return 缓存键
-     */
-    private String buildCacheKey(long appId, CodeGenTypeEnum codeGenType) {
-        return appId + "_" + codeGenType.getValue();
-    }
 }

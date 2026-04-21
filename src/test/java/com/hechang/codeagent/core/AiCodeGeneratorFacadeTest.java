@@ -44,7 +44,7 @@ class AiCodeGeneratorFacadeTest {
 
     @Test
     void generateAndSaveCodeStream() {
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("做一个聊天室网站,包含发言部分和留言板部分,网站要帅气，酷炫一些", CodeGenTypeEnum.MULTI_FILE,1L);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("做一个类似QQ的网站,包含发言部分和留言板部分,网站要帅气，酷炫一些", CodeGenTypeEnum.VUE_PROJECT,2L);
         //阻塞以等待所有数据收集完成
         List<String> result = codeStream.collectList().block();
         //验证结果

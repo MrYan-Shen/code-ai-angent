@@ -152,6 +152,7 @@ public class AiCodeGeneratorFacade {
      * @return 流式响应
      */
     private Flux<String> processCodeStream(Flux<String> codeStream,CodeGenTypeEnum codeGenType, Long appId){
+        // HTML 和多文件模式需要解析和保存
         StringBuilder codeBuilder = new StringBuilder();
         return codeStream
                 .doOnNext(codeBuilder::append) //实时收集代码片段
@@ -165,7 +166,7 @@ public class AiCodeGeneratorFacade {
                         File saveDir = CodeFileSaverExecutor.executeSaver(parserResult,codeGenType, appId);
                         log.info("代码保存成功，保存目录为：{}", saveDir.getAbsolutePath());
                     } catch (Exception e) {
-                        log.error("代码保存失败：{}", e.getMessage());
+                        log.error("代码保存失败：{}", e.getMessage(), e);
                     }
                 });
     }
@@ -192,6 +193,14 @@ public class AiCodeGeneratorFacade {
                 AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
                 MultiFileCodeResult result = aiCodeGeneratorService.generateMultiFileCode(userMessage);
                 yield CodeFileSaverExecutor.executeSaver(result, codeGenType, appId);
+            }
+            case VUE_PROJECT -> {
+                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenType);
+                // Vue 项目使用工具调用写入文件，需要等待流式响应完成
+                Flux<String> result = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
+                result.blockLast(); // 阻塞等待所有文件写入完成
+                // 直接返回项目目录
+                yield CodeFileSaverExecutor.executeSaver(null, codeGenType, appId);
             }
             default -> {
                 String errorMessage = "不支持的生成类型" + codeGenType.getValue();
@@ -222,6 +231,12 @@ public class AiCodeGeneratorFacade {
                 AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
                 Flux<String> result = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
                 yield processCodeStream(result, codeGenType, appId);
+            }
+            case VUE_PROJECT -> {
+                AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenType);
+                // Vue 项目使用工具调用直接写入文件，直接返回原始 Flux
+                // 文件保存由 AI 工具自动完成，不需要额外处理
+                yield aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
             }
             default -> {
                 String errorMessage = "不支持的生成类型" + codeGenType.getValue();
