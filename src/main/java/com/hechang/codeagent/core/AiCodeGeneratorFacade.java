@@ -210,10 +210,10 @@ public class AiCodeGeneratorFacade {
             case VUE_PROJECT -> {
                 AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenType);
                 // Vue 项目使用工具调用写入文件，需要等待流式响应完成
-                Flux<String> result = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
-                result.blockLast(); // 阻塞等待所有文件写入完成
+                TokenStream result = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
+                // 阻塞等待所有文件写入完成
                 // 直接返回项目目录
-                yield CodeFileSaverExecutor.executeSaver(null, codeGenType, appId);
+                yield CodeFileSaverExecutor.executeSaver(result, codeGenType, appId);
             }
             default -> {
                 String errorMessage = "不支持的生成类型" + codeGenType.getValue();
@@ -247,9 +247,10 @@ public class AiCodeGeneratorFacade {
             }
             case VUE_PROJECT -> {
                 AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenType);
-                // Vue 项目使用工具调用直接写入文件，直接返回原始 Flux
+                // Vue 项目使用工具调用写入文件，需要等待流式响应完成
+                TokenStream result = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
                 // 文件保存由 AI 工具自动完成，不需要额外处理
-                yield aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
+                yield processTokenStream(result,appId);
             }
             default -> {
                 String errorMessage = "不支持的生成类型" + codeGenType.getValue();
@@ -259,7 +260,7 @@ public class AiCodeGeneratorFacade {
     }
 
     /**
-     * 将 TokenStream 转换为 Flux<String>
+     * 将 TokenStream 转换为 Flux<String> (适配器模式)
      * @param tokenStream TokenStream
      * @return Flux<String>
      */

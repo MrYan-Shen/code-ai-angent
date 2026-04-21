@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
+ * *****
  * JSON 消息流处理器
  *  处理 VUE_PROJECT 类型的复杂流式响应，包含工具调用信息
  * @author chang
@@ -72,17 +73,21 @@ public class JsonMessageStreamHandler {
             log.debug("跳过非 JSON 内容: {}", chunk);
             return "";
         }
-        
+
         try {
             // 解析 JSON
             StreamMessage streamMessage = JSONUtil.toBean(chunk, StreamMessage.class);
             StreamMessageTypeEnum typeEnum = StreamMessageTypeEnum.getEnumByValue(streamMessage.getType());
+            if (typeEnum == null){
+                throw new RuntimeException("不支持的消息类型: " + streamMessage.getType());
+            }
             switch (typeEnum) {
                 case AI_RESPONSE -> {
                     AiResponseMessage aiMessage = JSONUtil.toBean(chunk, AiResponseMessage.class);
                     String data = aiMessage.getData();
                     // 直接拼接响应
                     chatHistoryStringBuilder.append(data);
+                    // 返回给前端实时输出的值
                     return data;
                 }
                 case TOOL_REQUEST -> {
