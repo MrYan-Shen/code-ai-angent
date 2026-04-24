@@ -10,6 +10,7 @@ import com.hechang.codeagent.core.handler.StreamHandlerExecutor;
 import com.hechang.codeagent.model.enums.ChatHistoryMessageTypeEnum;
 import com.hechang.codeagent.service.ChatHistoryService;
 import com.hechang.codeagent.service.ScreenshotService;
+import com.hechang.codeagent.utils.DirectoryUtils;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.hechang.codeagent.constant.AppConstant;
@@ -186,61 +187,63 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         } else {
             log.info("应用已存在deployKey: {}，将进行重新部署", deployKey);
         }
-        // 获取应用的代码生成类型
-        String codeGenType = app.getCodeGenType();
-        
-        // 在 code_output 目录下查找匹配的文件夹
-        File codeOutputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR);
-        if (!codeOutputDir.exists() || !codeOutputDir.isDirectory()) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码输出目录不存在");
-        }
-        
-        File sourceDir = null;
-        
-        // VUE_PROJECT 类型使用固定目录名，其他类型使用前缀匹配
-        if ("vue_project".equals(codeGenType)) {
-            // Vue 项目使用固定目录名：vue_project_{appId}
-            String dirName = codeGenType + "_" + appId;
-            sourceDir = new File(codeOutputDir, dirName);
-            log.info("Vue项目，尝试查找目录: {}", sourceDir.getAbsolutePath());
-        } else {
-            // 其他类型使用前缀匹配：codeGenType_appId_
-            String namePrefix = codeGenType + "_" + appId + "_";
-            
-            // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
-            long latestModified = 0;
-            File[] matchedDirs = codeOutputDir.listFiles((dir, name) -> 
-                dir.isDirectory() && name.startsWith(namePrefix)
-            );
-            
-            if (matchedDirs != null) {
-                // 选择最后修改时间最新的文件夹
-                for (File dir : matchedDirs) {
-                    if (dir.lastModified() > latestModified) {
-                        latestModified = dir.lastModified();
-                        sourceDir = dir;
-                    }
-                }
-            }
-        }
-        
-        // 检查是否找到源目录
-        if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
-        }
-        log.info("找到应用代码目录: {}", sourceDir.getAbsolutePath());
-        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
-        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT){
-            // 处理Vue项目
-            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDir.getAbsolutePath());
-            ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue项目构建失败");
-            // 检查dist目录是否存在
-            File distDir = new File(sourceDir, "dist");
-            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.SYSTEM_ERROR, "Vue项目构建完成单但未生成dist目录");
-            // 将dist目录作为部署源
-            sourceDir = distDir;
-            log.info("找到Vue项目代码目录: {}", sourceDir.getAbsolutePath());
-        }
+//        // 获取应用的代码生成类型
+//        String codeGenType = app.getCodeGenType();
+//
+//        // 在 code_output 目录下查找匹配的文件夹
+//        File codeOutputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR);
+//        if (!codeOutputDir.exists() || !codeOutputDir.isDirectory()) {
+//            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码输出目录不存在");
+//        }
+//
+//        File sourceDir = null;
+//
+//        // VUE_PROJECT 类型使用固定目录名，其他类型使用前缀匹配
+//        if ("vue_project".equals(codeGenType)) {
+//            // Vue 项目使用固定目录名：vue_project_{appId}
+//            String dirName = codeGenType + "_" + appId;
+//            sourceDir = new File(codeOutputDir, dirName);
+//            log.info("Vue项目，尝试查找目录: {}", sourceDir.getAbsolutePath());
+//        } else {
+//            // 其他类型使用前缀匹配：codeGenType_appId_
+//            String namePrefix = codeGenType + "_" + appId + "_";
+//
+//            // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
+//            long latestModified = 0;
+//            File[] matchedDirs = codeOutputDir.listFiles((dir, name) ->
+//                dir.isDirectory() && name.startsWith(namePrefix)
+//            );
+//
+//            if (matchedDirs != null) {
+//                // 选择最后修改时间最新的文件夹
+//                for (File dir : matchedDirs) {
+//                    if (dir.lastModified() > latestModified) {
+//                        latestModified = dir.lastModified();
+//                        sourceDir = dir;
+//                    }
+//                }
+//            }
+//        }
+//
+//        // 检查是否找到源目录
+//        if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
+//            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
+//        }
+//        log.info("找到应用代码目录: {}", sourceDir.getAbsolutePath());
+//
+//        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+//        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT){
+//            // 处理Vue项目
+//            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDir.getAbsolutePath());
+//            ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue项目构建失败");
+//            // 检查dist目录是否存在
+//            File distDir = new File(sourceDir, "dist");
+//            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.SYSTEM_ERROR, "Vue项目构建完成单但未生成dist目录");
+//            // 将dist目录作为部署源
+//            sourceDir = distDir;
+//            log.info("找到Vue项目代码目录: {}", sourceDir.getAbsolutePath());
+//        }
+        File sourceDir = DirectoryUtils.getCodeGeneratePath(app, appId);
 
         // 复制文件到部署目录
         String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;

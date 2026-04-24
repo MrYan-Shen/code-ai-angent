@@ -18,11 +18,14 @@ import com.hechang.codeagent.model.entity.User;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import com.hechang.codeagent.model.vo.AppVO;
 import com.hechang.codeagent.service.AppService;
+import com.hechang.codeagent.service.ProjectDownloadService;
 import com.hechang.codeagent.service.UserService;
+import com.hechang.codeagent.utils.DirectoryUtils;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -50,6 +53,9 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private ProjectDownloadService projectDownloadService;
 
     /**
      * 创建应用
@@ -361,51 +367,8 @@ public class AppController {
         // 查询应用信息
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        
-        // 获取应用的代码生成类型
-        String codeGenType = app.getCodeGenType();
-        
-        // 在 code_output 目录下查找匹配的文件夹
-        File codeOutputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR);
-        if (!codeOutputDir.exists() || !codeOutputDir.isDirectory()) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码输出目录不存在");
-        }
-        
-        File sourceDir = null;
-        
-        // VUE_PROJECT 类型使用固定目录名，其他类型使用前缀匹配
-        if ("vue_project".equals(codeGenType)) {
-            // Vue 项目使用固定目录名：vue_project_{appId}
-            String dirName = codeGenType + "_" + appId;
-            sourceDir = new File(codeOutputDir, dirName);
-            log.info("Vue项目，尝试查找目录: {}", sourceDir.getAbsolutePath());
-        } else {
-            // 其他类型使用前缀匹配：codeGenType_appId_
-            String namePrefix = codeGenType + "_" + appId + "_";
-            
-            // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
-            long latestModified = 0;
-            File[] matchedDirs = codeOutputDir.listFiles((dir, name) -> 
-                dir.isDirectory() && name.startsWith(namePrefix)
-            );
-            
-            if (matchedDirs != null) {
-                // 选择最后修改时间最新的文件夹
-                for (File dir : matchedDirs) {
-                    if (dir.lastModified() > latestModified) {
-                        latestModified = dir.lastModified();
-                        sourceDir = dir;
-                    }
-                }
-            }
-        }
-        
-        // 检查是否找到源目录
-        if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
-        }
-        
-        log.info("找到应用代码目录: {}", sourceDir.getAbsolutePath());
+        // 获取源代码生成目录
+        File sourceDir = DirectoryUtils.getCodeGeneratePath(app, appId);
         // 返回相对路径（文件夹名称）
         return ResultUtils.success(sourceDir.getName());
     }
@@ -429,4 +392,27 @@ public class AppController {
         return ResultUtils.success(deployApp);
     }
 
+
+    @GetMapping("/download/{appId}")
+    public void download(@PathVariable Long appId,
+                         HttpServletRequest request,
+                         HttpServletResponse response) {
+        // 基础校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
+        // 查询应用信息
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 权限校验：只有应用创建者才能下载代码
+        User loginUser = userService.getLoginUser(request);
+        if (!app.getUserId().equals(loginUser.getId())){
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "没有权限访问该应用");
+        }
+        // 构建应用代码目录路径（生成目录，非部署目录）
+        File sourceDir = DirectoryUtils.getCodeGeneratePath(app, appId);
+        ThrowUtils.throwIf(!sourceDir.exists(), ErrorCode.NOT_FOUND_ERROR, "应用代码不存在");
+        // 生成下载文件名
+        String downloadFileName = String.valueOf(appId);
+        // 调用通用下载服务
+        projectDownloadService.downloadProjectAsZip(sourceDir.getAbsolutePath(), downloadFileName, response);
+    }
 }
