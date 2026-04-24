@@ -71,4 +71,12 @@ public interface AppService extends IService<App> {
      * @return 列表
      */
     boolean removeById(Serializable id);
+
+    /**
+     * 异步生成应用截图
+     *
+     * @param appId appId
+     * @param appUrl appUrl
+     */
+    void generateAppScreenshotAsync(Long appId, String appUrl);
 }

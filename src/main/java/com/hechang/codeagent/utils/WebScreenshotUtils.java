@@ -19,6 +19,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.io.File;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -58,7 +59,7 @@ public class WebScreenshotUtils {
         }
         // 创建临时目录
         try {
-            String rootPath = System.getProperty("user.dir") + "/tmp/screenshots/" + UUID.randomUUID().toString().substring(0, 8);
+            String rootPath = System.getProperty("user.dir") + "/src/main/tmp/screenshots/" + UUID.randomUUID().toString().substring(0, 8);
             FileUtil.mkdir(rootPath);
             // 图片后缀
             final String IMAGE_SUFFIX = ".png";
@@ -96,11 +97,11 @@ public class WebScreenshotUtils {
             WebDriverManager.chromedriver().setup();
             // 配置 Chrome 选项
             ChromeOptions options = new ChromeOptions();
-            // 无头模式
+            // *****无头模式：浏览器在后台运行，不会弹出窗口
             options.addArguments("--headless");
             // 禁用GPU（在某些环境下避免问题）
             options.addArguments("--disable-gpu");
-            // 禁用沙盒模式（Docker环境需要）
+            // *****禁用沙盒模式（Docker环境需要） 配合--disable-dev-shm-usage可确保在容器环境中正常运行
             options.addArguments("--no-sandbox");
             // 禁用开发者shm使用
             options.addArguments("--disable-dev-shm-usage");
@@ -169,9 +170,8 @@ public class WebScreenshotUtils {
             // 创建等待页面加载对象
             WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(10));
             // 等待 document.readyState 为 complete
-            wait.until(driver -> ((JavascriptExecutor) driver)
-                    .executeScript("return document.readyState").
-                    equals("complete")
+            wait.until(driver -> Objects.equals(((JavascriptExecutor) driver)
+                    .executeScript("return document.readyState"), "complete")
             );
             // 额外等待一段时间，确保动态内容加载完成
             Thread.sleep(2000);

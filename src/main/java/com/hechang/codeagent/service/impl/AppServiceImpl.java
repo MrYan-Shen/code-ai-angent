@@ -9,6 +9,7 @@ import com.hechang.codeagent.core.builder.VueProjectBuilder;
 import com.hechang.codeagent.core.handler.StreamHandlerExecutor;
 import com.hechang.codeagent.model.enums.ChatHistoryMessageTypeEnum;
 import com.hechang.codeagent.service.ChatHistoryService;
+import com.hechang.codeagent.service.ScreenshotService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.hechang.codeagent.constant.AppConstant;
@@ -63,8 +64,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
 
     @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
-    @Autowired
+    @Resource
     private VueProjectBuilder vueProjectBuilder;
+    @Resource
+    private ScreenshotService screenshotService;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -254,7 +257,31 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR,"更新应用部署信息失败");
         // 返回可访问的 URL
-        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST,deployKey);
+        String appDeployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        // 异步生成截图并更新应用封面
+        generateAppScreenshotAsync(appId, appDeployUrl);
+        return appDeployUrl;
+    }
+
+    /**
+     * 异步生成应用截图 —— 使用java21的新特性虚拟线程
+     *
+     * @param appId appId
+     * @param appUrl appUrl
+     */
+    @Override
+    public void generateAppScreenshotAsync(Long appId, String appUrl) {
+        // 创建虚拟线程异步执行
+        Thread.ofVirtual().start(() -> {
+           // 调用截图服务生成截图
+            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+            // 更新应用封面
+            App updateApp = new App();
+            updateApp.setId(appId);
+            updateApp.setCover(screenshotUrl);
+            boolean updateResult = this.updateById(updateApp);
+            ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR,"更新应用封面失败");
+        });
     }
 
 
