@@ -1,6 +1,5 @@
 declare namespace API {
   type AppAddRequest = {
-    appName?: string
     initPrompt?: string
   }
 

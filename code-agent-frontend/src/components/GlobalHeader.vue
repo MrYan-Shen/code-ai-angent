@@ -84,13 +84,8 @@ const originItems = [
   },
   {
     key: 'others',
-    label: h('a', { href: 'https://www.csdn.net', target: '_blank' }, 'CSDN'),
-    title: 'CSDN',
-  },
-  {
-    key: 'others',
-    label: h('a', { href: 'https://www.bilibili.com', target: '_blank' }, 'BILIBILI'),
-    title: 'BILIBILI',
+    label: h('a', { href: 'https://www.codefather.cn', target: '_blank' }, '编程导航'),
+    title: '编程导航',
   },
 ]
 

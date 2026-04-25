@@ -10,8 +10,6 @@ import AppCard from '@/components/AppCard.vue'
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
-// 应用名称
-const appName = ref('')
 // 用户提示词
 const userPrompt = ref('')
 const creating = ref(false)
@@ -41,11 +39,6 @@ const setPrompt = (prompt: string) => {
 
 // 创建应用
 const createApp = async () => {
-  if (!appName.value.trim()) {
-    message.warning('请输入应用名称')
-    return
-  }
-
   if (!userPrompt.value.trim()) {
     message.warning('请输入应用描述')
     return
@@ -60,13 +53,12 @@ const createApp = async () => {
   creating.value = true
   try {
     const res = await addApp({
-      appName: appName.value.trim(),
       initPrompt: userPrompt.value.trim(),
     })
 
     if (res.data.code === 0 && res.data.data) {
       message.success('应用创建成功')
-      // 跳转到对话页面,确保ID是字符串类型
+      // 跳转到对话页面，确保ID是字符串类型
       const appId = String(res.data.data)
       await router.push(`/app/chat/${appId}`)
     } else {
@@ -172,15 +164,9 @@ onMounted(() => {
         <h1 class="hero-title">AI 应用生成平台</h1>
         <p class="hero-description">一句话轻松创建网站应用</p>
       </div>
-      
+
       <!-- 用户提示词输入框 -->
       <div class="input-section">
-        <a-input
-          v-model:value="appName"
-          placeholder="请输入应用名称，例如：个人博客网站"
-          :maxlength="100"
-          class="app-name-input"
-        />
         <a-textarea
           v-model:value="userPrompt"
           placeholder="帮我创建个人博客网站"
@@ -461,24 +447,6 @@ onMounted(() => {
   position: relative;
   margin: 0 auto 24px;
   max-width: 800px;
-}
-
-.app-name-input {
-  border-radius: 12px;
-  border: none;
-  font-size: 16px;
-  padding: 14px 20px;
-  margin-bottom: 12px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease;
-}
-
-.app-name-input:focus {
-  background: rgba(255, 255, 255, 1);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-  transform: translateY(-2px);
 }
 
 .prompt-input {

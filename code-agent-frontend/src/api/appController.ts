@@ -139,20 +139,6 @@ export async function getAppVoById(
   })
 }
 
-/** 获取应用最新代码的预览路径 GET /app/preview/path */
-export async function getPreviewPath(
-  params: { appId: number },
-  options?: { [key: string]: any }
-) {
-  return request<API.BaseResponseString>('/app/preview/path', {
-    method: 'GET',
-    params: {
-      ...params,
-    },
-    ...(options || {}),
-  })
-}
-
 /** 此处后端没有提供注释 POST /app/good/list/page/vo */
 export async function listGoodAppVoByPage(
   body: API.AppQueryRequest,
