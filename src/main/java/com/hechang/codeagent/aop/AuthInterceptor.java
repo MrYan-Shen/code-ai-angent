@@ -10,8 +10,8 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
-import org.springframework.stereotype.Component;
 import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -23,6 +23,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 @Aspect
 @Component
 public class AuthInterceptor {
+
     @Resource
     private UserService userService;
 
@@ -36,29 +37,26 @@ public class AuthInterceptor {
     @Around("@annotation(authCheck)")
     public Object doInterceptor(ProceedingJoinPoint joinPoint, AuthCheck authCheck) throws Throwable {
         String mustRole = authCheck.mustRole();
-        // 获取当前登录用户
         RequestAttributes requestAttributes = RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+        // 获取当前登录用户
         User loginUser = userService.getLoginUser(request);
-
         UserRoleEnum mustRoleEnum = UserRoleEnum.getEnumByValue(mustRole);
-
-        //不需要权限，放行
+        // 不需要权限，直接放行
         if (mustRoleEnum == null) {
             return joinPoint.proceed();
         }
-        // 必须有权限才放行
-        //获取当前用户具有的权限
+        // 以下的代码：必须有这个权限才能通过
         UserRoleEnum userRoleEnum = UserRoleEnum.getEnumByValue(loginUser.getUserRole());
-        //没有权限，拒绝
+        // 没有权限，直接拒绝
         if (userRoleEnum == null) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
-        // 必须是管理员才能通过，但当前登录用户没有
-        if (UserRoleEnum.ADMIN.equals(mustRoleEnum) && !UserRoleEnum.ADMIN.equals(userRoleEnum)){
+        // 要求必须有管理员权限，但当前登录用户没有
+        if (UserRoleEnum.ADMIN.equals(mustRoleEnum) && !UserRoleEnum.ADMIN.equals(userRoleEnum)) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
-        // 通过普通用户的权限效验，放行
+        // 通过普通用户的权限校验，放行
         return joinPoint.proceed();
     }
 }

@@ -12,7 +12,6 @@ import java.io.File;
 
 /**
  * COS 对象存储管理器
- * @author chang
  */
 @Component
 @Slf4j

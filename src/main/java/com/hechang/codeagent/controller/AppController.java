@@ -3,6 +3,8 @@ package com.hechang.codeagent.controller;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
 import com.hechang.codeagent.annotation.AuthCheck;
 import com.hechang.codeagent.common.BaseResponse;
 import com.hechang.codeagent.common.DeleteRequest;
@@ -13,23 +15,18 @@ import com.hechang.codeagent.exception.BusinessException;
 import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.exception.ThrowUtils;
 import com.hechang.codeagent.model.dto.app.*;
-import com.hechang.codeagent.model.entity.App;
 import com.hechang.codeagent.model.entity.User;
-import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import com.hechang.codeagent.model.vo.AppVO;
-import com.hechang.codeagent.service.AppService;
 import com.hechang.codeagent.service.ProjectDownloadService;
 import com.hechang.codeagent.service.UserService;
-import com.hechang.codeagent.utils.DirectoryUtils;
-import com.mybatisflex.core.paginate.Page;
-import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
+import com.hechang.codeagent.model.entity.App;
+import com.hechang.codeagent.service.AppService;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -41,11 +38,9 @@ import java.util.Map;
 /**
  * 应用 控制层。
  *
- * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
  */
 @RestController
 @RequestMapping("/app")
-@Slf4j
 public class AppController {
 
     @Resource
@@ -57,6 +52,92 @@ public class AppController {
     @Resource
     private ProjectDownloadService projectDownloadService;
 
+    @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
+                                                       @RequestParam String message,
+                                                       HttpServletRequest request) {
+        // 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 错误");
+        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "提示词不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务生成代码（SSE 流式返回）
+        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
+        return contentFlux
+                .map(chunk -> {
+                    Map<String, String> wrapper = Map.of("d", chunk);
+                    String jsonData = JSONUtil.toJsonStr(wrapper);
+                    return ServerSentEvent.<String>builder()
+                            .data(jsonData)
+                            .build();
+                })
+                .concatWith(Mono.just(
+                        // 发送结束事件
+                        ServerSentEvent.<String>builder()
+                                .event("done")
+                                .data("")
+                                .build()
+                ));
+    }
+
+    /**
+     * 应用部署
+     *
+     * @param appDeployRequest 部署请求
+     * @param request          请求
+     * @return 部署 URL
+     */
+    @PostMapping("/deploy")
+    public BaseResponse<String> deployApp(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest request) {
+        // 检查部署请求是否为空
+        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
+        // 获取应用 ID
+        Long appId = appDeployRequest.getAppId();
+        // 检查应用 ID 是否为空
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务部署应用
+        String deployUrl = appService.deployApp(appId, loginUser);
+        // 返回部署 URL
+        return ResultUtils.success(deployUrl);
+    }
+
+    /**
+     * 下载应用代码
+     *
+     * @param appId    应用ID
+     * @param request  请求
+     * @param response 响应
+     */
+    @GetMapping("/download/{appId}")
+    public void downloadAppCode(@PathVariable Long appId,
+                                HttpServletRequest request,
+                                HttpServletResponse response) {
+        // 1. 基础校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID无效");
+        // 2. 查询应用信息
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验：只有应用创建者可以下载代码
+        User loginUser = userService.getLoginUser(request);
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限下载该应用代码");
+        }
+        // 4. 构建应用代码目录路径（生成目录，非部署目录）
+        String codeGenType = app.getCodeGenType();
+        String sourceDirName = codeGenType + "_" + appId;
+        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
+        // 5. 检查代码目录是否存在
+        File sourceDir = new File(sourceDirPath);
+        ThrowUtils.throwIf(!sourceDir.exists() || !sourceDir.isDirectory(),
+                ErrorCode.NOT_FOUND_ERROR, "应用代码不存在，请先生成代码");
+        // 6. 生成下载文件名（不建议添加中文内容）
+        String downloadFileName = String.valueOf(appId);
+        // 7. 调用通用下载服务
+        projectDownloadService.downloadProjectAsZip(sourceDirPath, downloadFileName, response);
+    }
+
     /**
      * 创建应用
      *
@@ -67,9 +148,9 @@ public class AppController {
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
-        //获取当前登录用户
-        User LoginUser = userService.getLoginUser(request);
-        Long appId = appService.createApp(appAddRequest, LoginUser);
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        Long appId = appService.createApp(appAddRequest, loginUser);
         return ResultUtils.success(appId);
     }
 
@@ -132,7 +213,7 @@ public class AppController {
     /**
      * 根据 id 获取应用详情
      *
-     * @param id      应用 id
+     * @param id 应用 id
      * @return 应用详情
      */
     @GetMapping("/get/vo")
@@ -277,129 +358,5 @@ public class AppController {
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR);
         // 获取封装类
         return ResultUtils.success(appService.getAppVO(app));
-    }
-
-    /**
-     * 应用聊天生成代码(流式SSE)
-     * 需解决问题：
-     *  1.空格丢失问题：前端使用EventSource对接目前的接口时，会出现空格丢失问题。
-     *      方案：将Flux额外封装成 ServerSentEvent，把原始数据放到JSON的data字段中，并返回给前端。
-     *  2.主动告诉欠打UN生成完成
-     *      在SSE中，当服务器关闭连接时，会触发客户端的onclose事件，这是前端判断流结束的标准式。
-     *      但是，onclose事件会在连接正常结束（服务器主动关闭）和异常中断（如网络问题）时都触发，
-     *      前端就很难区分到底后端是正常响应了所有数据、还是异常中断了。
-     *    因此，我们最好在后端添加一个明确的done事件，这样可以更清晰地区分流的正常结束和异常中断。
-     * @param appId 应用id
-     * @param message 消息
-     * @param request 请求
-     * @return 生成的代码
-     */
-    @GetMapping(value = "/chat/gen/code",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
-                                                      @RequestParam String message,
-                                                      HttpServletRequest request) {
-        // 参数校验
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
-        // 获取用户
-        User loginUser = userService.getLoginUser(request);
-        // 调用服务生成代码（流式）
-        Flux<String> codeFlux = appService.chatToGenCode(appId, message, loginUser);
-        return codeFlux
-                .map(code -> {
-                    // 将内容包装成JSON对象
-                    Map<String, String> wrapper = Map.of("d", code);
-                    String jsonData = JSONUtil.toJsonStr(wrapper);
-                    return ServerSentEvent.<String>builder()
-                            .data(jsonData)
-                            .build();
-                })
-                .onErrorResume(error -> {
-                    // 处理错误情况，发送business-error事件
-                    log.error("生成代码失败: {}", error.getMessage(), error);
-                    Map<String, Object> errorWrapper = Map.of(
-                        "message", error.getMessage() != null ? error.getMessage() : "生成代码失败"
-                    );
-                    String errorJson = JSONUtil.toJsonStr(errorWrapper);
-                    return Mono.just(
-                        ServerSentEvent.<String>builder()
-                            .event("business-error")
-                            .data(errorJson)
-                            .build()
-                    ).concatWith(Mono.just(
-                        ServerSentEvent.<String>builder()
-                            .event("done")
-                            .data("")
-                            .build()
-                    ));
-                })
-                .concatWith(Mono.just(
-                //发送结束事件
-                ServerSentEvent.<String>builder()
-                        .event("done")
-                        .data("")
-                        .build()
-                ));
-    }
-
-    /**
-     * 获取应用最新代码的预览URL
-     *
-     * @param appId 应用id
-     * @return 预览URL路径（不包含域名）
-     */
-    @GetMapping("/preview/path")
-    public BaseResponse<String> getPreviewPath(@RequestParam Long appId) {
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
-        // 查询应用信息
-        App app = appService.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 获取源代码生成目录
-        File sourceDir = DirectoryUtils.getCodeGeneratePath(app, appId);
-        // 返回相对路径（文件夹名称）
-        return ResultUtils.success(sourceDir.getName());
-    }
-
-    /**
-     * 应用部署
-     *
-     * @param appDeployRequest 应用部署请求
-     * @param request 请求
-     * @return 应用部署结果
-     */
-    @PostMapping("/deploy")
-    public BaseResponse<String> deployApp(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest request){
-        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
-        Long appId = appDeployRequest.getAppId();
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
-        // 获取当前登录用户信息
-        User loginUser = userService.getLoginUser(request);
-        // 调用服务部署应用
-        String deployApp = appService.deployApp(appId, loginUser);
-        return ResultUtils.success(deployApp);
-    }
-
-
-    @GetMapping("/download/{appId}")
-    public void download(@PathVariable Long appId,
-                         HttpServletRequest request,
-                         HttpServletResponse response) {
-        // 基础校验
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
-        // 查询应用信息
-        App app = appService.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 权限校验：只有应用创建者才能下载代码
-        User loginUser = userService.getLoginUser(request);
-        if (!app.getUserId().equals(loginUser.getId())){
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "没有权限访问该应用");
-        }
-        // 构建应用代码目录路径（生成目录，非部署目录）
-        File sourceDir = DirectoryUtils.getCodeGeneratePath(app, appId);
-        ThrowUtils.throwIf(!sourceDir.exists(), ErrorCode.NOT_FOUND_ERROR, "应用代码不存在");
-        // 生成下载文件名
-        String downloadFileName = String.valueOf(appId);
-        // 调用通用下载服务
-        projectDownloadService.downloadProjectAsZip(sourceDir.getAbsolutePath(), downloadFileName, response);
     }
 }

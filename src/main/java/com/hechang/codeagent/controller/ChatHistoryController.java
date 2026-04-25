@@ -1,5 +1,7 @@
 package com.hechang.codeagent.controller;
 
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
 import com.hechang.codeagent.annotation.AuthCheck;
 import com.hechang.codeagent.common.BaseResponse;
 import com.hechang.codeagent.common.ResultUtils;
@@ -7,24 +9,19 @@ import com.hechang.codeagent.constant.UserConstant;
 import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.exception.ThrowUtils;
 import com.hechang.codeagent.model.dto.chathistory.ChatHistoryQueryRequest;
+import com.hechang.codeagent.model.entity.ChatHistory;
 import com.hechang.codeagent.model.entity.User;
 import com.hechang.codeagent.service.UserService;
-import com.mybatisflex.core.paginate.Page;
-import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import com.hechang.codeagent.model.entity.ChatHistory;
 import com.hechang.codeagent.service.ChatHistoryService;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * 对话历史 控制层。
  *
- * @author Chang
  */
 @RestController
 @RequestMapping("/chatHistory")
@@ -32,6 +29,7 @@ public class ChatHistoryController {
 
     @Resource
     private ChatHistoryService chatHistoryService;
+
     @Resource
     private UserService userService;
 
@@ -71,5 +69,4 @@ public class ChatHistoryController {
         Page<ChatHistory> result = chatHistoryService.page(Page.of(pageNum, pageSize), queryWrapper);
         return ResultUtils.success(result);
     }
-
 }

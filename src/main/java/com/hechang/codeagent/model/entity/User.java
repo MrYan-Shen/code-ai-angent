@@ -15,12 +15,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.crypto.KeyGenerator;
-
 /**
  * 用户 实体类。
  *
- * @author Chang
  */
 @Data
 @Builder
@@ -33,7 +30,7 @@ public class User implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * id,手动修改id为雪花算法
+     * id
      */
     @Id(keyType = KeyType.Generator, value = KeyGenerators.snowFlakeId)
     private Long id;

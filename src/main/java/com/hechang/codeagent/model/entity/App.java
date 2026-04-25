@@ -4,6 +4,7 @@ import com.mybatisflex.annotation.Column;
 import com.mybatisflex.annotation.Id;
 import com.mybatisflex.annotation.KeyType;
 import com.mybatisflex.annotation.Table;
+
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -18,7 +19,6 @@ import lombok.NoArgsConstructor;
 /**
  * 应用 实体类。
  *
- * @author Chang
  */
 @Data
 @Builder

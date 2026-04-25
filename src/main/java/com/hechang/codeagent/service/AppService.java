@@ -9,83 +9,73 @@ import com.hechang.codeagent.model.entity.User;
 import com.hechang.codeagent.model.vo.AppVO;
 import reactor.core.publisher.Flux;
 
-
-import java.io.Serializable;
 import java.util.List;
 
 /**
  * 应用 服务层。
  *
- * @author chang
  */
 public interface AppService extends IService<App> {
 
     /**
+     * 通过对话生成应用代码
+     *
+     * @param appId     应用 ID
+     * @param message   提示词
+     * @param loginUser 登录用户
+     * @return
+     */
+    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
+    /**
+     * 创建应用
+     *
+     * @param appAddRequest
+     * @param loginUser
+     * @return
+     */
+    Long createApp(AppAddRequest appAddRequest, User loginUser);
+
+    /**
+     * 应用部署
+     *
+     * @param appId     应用 ID
+     * @param loginUser 登录用户
+     * @return 可访问的部署地址
+     */
+    String deployApp(Long appId, User loginUser);
+
+    /**
+     * 异步生成应用截图并更新封面
+     *
+     * @param appId  应用ID
+     * @param appUrl 应用访问URL
+     */
+    void generateAppScreenshotAsync(Long appId, String appUrl);
+
+    /**
      * 获取应用封装类
      *
-     * @param app  app
-     * @return 封装类
+     * @param app
+     * @return
      */
     AppVO getAppVO(App app);
 
     /**
      * 获取应用封装类列表
      *
-     * @param appList app列表
-     * @return 列表
+     * @param appList
+     * @return
      */
     List<AppVO> getAppVOList(List<App> appList);
 
     /**
      * 构造应用查询条件
      *
-     * @param appQueryRequest app查询条件
-     * @return 查询条件
+     * @param appQueryRequest
+     * @return
      */
     QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest);
 
-    /**
-     * 调用AI生成代码模块的门面代码来生成代码
-     *
-     * @param appId  appId
-     * @param userMessage 用户输入
-     * @param loginUser 登录用户
-     * @return 列表
-     */
-    Flux<String> chatToGenCode(Long appId, String userMessage, User loginUser);
 
-    /**
-     * 部署代码
-     *
-     * @param appId  appId
-     * @param loginUser 登录用户
-     * @return 列表
-     */
-    String deployApp(Long appId, User loginUser);
-
-    /**
-     * 重写mybatis-flex的删除方法，添加容错设计，
-     * 即使对话历史删除失败，也不会阻止应用的删除操作，只是记录错误日志，确保核心业务的稳定性
-     *
-     * @param id  id
-     * @return 列表
-     */
-    boolean removeById(Serializable id);
-
-    /**
-     * 异步生成应用截图
-     *
-     * @param appId appId
-     * @param appUrl appUrl
-     */
-    void generateAppScreenshotAsync(Long appId, String appUrl);
-
-    /**
-     * 添加应用
-     *
-     * @param appAddRequest app添加请求
-     * @param loginUser 登录用户
-     * @return 列表
-     */
-    Long createApp(AppAddRequest appAddRequest, User loginUser);
 }

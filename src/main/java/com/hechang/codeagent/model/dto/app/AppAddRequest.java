@@ -12,11 +12,6 @@ import java.io.Serializable;
 public class AppAddRequest implements Serializable {
 
     /**
-     * 应用名称
-     */
-    private String appName;
-
-    /**
      * 应用初始化的 prompt
      */
     private String initPrompt;

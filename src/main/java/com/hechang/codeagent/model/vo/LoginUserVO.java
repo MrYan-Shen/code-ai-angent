@@ -7,12 +7,13 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 登录信息脱敏
+ * 脱敏后的登录用户信息
  */
 @Data
 public class LoginUserVO implements Serializable {
+
     /**
-     * id
+     * 用户 id
      */
     private Long id;
 
@@ -38,7 +39,7 @@ public class LoginUserVO implements Serializable {
 
     /**
      * 用户角色：user/admin
-     * */
+     */
     private String userRole;
 
     /**

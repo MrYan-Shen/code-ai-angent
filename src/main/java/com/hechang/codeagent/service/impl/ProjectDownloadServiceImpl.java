@@ -1,7 +1,7 @@
 package com.hechang.codeagent.service.impl;
 
+import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.core.util.ZipUtil;
 import com.hechang.codeagent.exception.BusinessException;
 import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.exception.ThrowUtils;
@@ -10,98 +10,89 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
-import java.io.FileFilter;
-import java.io.IOException;
+import java.io.*;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
+/**
+ * 项目下载服务实现类
+ */
 @Service
 @Slf4j
 public class ProjectDownloadServiceImpl implements ProjectDownloadService {
 
-    /**
-     * 需要过滤的文件和目录名称
-     */
-    private static final Set<String> IGNORED_NAMES = Set.of(
-            "node_modules",
-            ".git",
-            "dist",
-            "build",
-            ".DS_Store",
-            ".env",
-            "target",
-            ".mvn",
-            ".idea",
-            ".vscode"
-    );
-
-    /**
-     * 需要过滤的文件扩展名
-     */
-    private static final Set<String> IGNORED_EXTENSIONS = Set.of(
-            ".log",
-            ".tmp",
-            ".cache"
-    );
-
-
-    /**
-     * 下载项目为 ZIP
-     * @param projectPath 项目路径
-     * @param downloadFileName 下载文件名
-     * @param response 响应
-     */
     @Override
     public void downloadProjectAsZip(String projectPath, String downloadFileName, HttpServletResponse response) {
-        // 基础校验
+        // 1. 参数校验
         ThrowUtils.throwIf(StrUtil.isBlank(projectPath), ErrorCode.PARAMS_ERROR, "项目路径不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(downloadFileName), ErrorCode.PARAMS_ERROR, "下载文件名不能为空");
+
         File projectDir = new File(projectPath);
-        ThrowUtils.throwIf(!projectDir.exists(), ErrorCode.PARAMS_ERROR, "项目路径不存在");
-        ThrowUtils.throwIf(!projectDir.isDirectory(), ErrorCode.PARAMS_ERROR, "项目路径不是一个目录");
-        log.info("开始打包下载项目: {} -> {}.zip", projectPath, downloadFileName);
-        // 设置 HTTP 响应头
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.setContentType("application/zip");
-        response.addHeader("Content-Disposition",
-                String.format("attachment; filename=\"%s.zip\"", downloadFileName));
-        // 定义文件过滤器
-        FileFilter filter = file -> isPathAllowed(projectDir.toPath(), file.toPath());
-        // 压缩
+        ThrowUtils.throwIf(!projectDir.exists() || !projectDir.isDirectory(),
+                ErrorCode.NOT_FOUND_ERROR, "项目目录不存在");
+
+        // 2. 设置响应头
         try {
-            // 使用 HuTool 的 ZipUtil 直接将过滤后的目录压缩到响应输出流
-            ZipUtil.zip(response.getOutputStream(), StandardCharsets.UTF_8, false, filter, projectDir);
-            log.info("打包下载项目成功: {} -> {}.zip", projectPath, downloadFileName);
+            String zipFileName = downloadFileName + ".zip";
+            response.setContentType("application/zip");
+            response.setCharacterEncoding("UTF-8");
+            // URL编码文件名，支持中文
+            String encodedFileName = URLEncoder.encode(zipFileName, StandardCharsets.UTF_8.name())
+                    .replaceAll("\\+", "%20");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFileName);
+
+            // 3. 创建ZIP输出流
+            try (ZipOutputStream zipOut = new ZipOutputStream(response.getOutputStream())) {
+                compressDirectory(projectDir, projectDir.getParentFile(), zipOut);
+                zipOut.finish();
+                zipOut.flush();
+            }
+
+            log.info("项目下载成功，路径: {}, 文件名: {}", projectPath, zipFileName);
         } catch (IOException e) {
-            log.error("打包下载项目失败", e);
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "打包下载项目失败");
+            log.error("项目下载失败", e);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "项目下载失败: " + e.getMessage());
         }
     }
 
     /**
-     * 校验路径是否允许包含在压缩包中
+     * 递归压缩目录
      *
-     * @param projectRoot 项目根目录
-     * @param fullPath    完整路径
-     * @return 是否允许
+     * @param fileToZip 要压缩的文件或目录
+     * @param parentDir 父目录（用于计算相对路径）
+     * @param zipOut    ZIP输出流
+     * @throws IOException IO异常
      */
-    private boolean isPathAllowed(Path projectRoot, Path fullPath) {
-        // 获取相对路径
-        Path relativePath = projectRoot.relativize(fullPath);
-        // 检查路径中的每一部分是否符合要求
-        for (Path part : relativePath) {
-            String partName = part.toString();
-            // 检查是否在忽略名称列表中
-            if (IGNORED_NAMES.contains(partName)) {
-                return false;
+    private void compressDirectory(File fileToZip, File parentDir, ZipOutputStream zipOut) throws IOException {
+        String fileName = fileToZip.getName();
+        String relativePath = parentDir.toPath().relativize(fileToZip.toPath()).toString();
+
+        if (fileToZip.isDirectory()) {
+            // 处理目录：添加目录条目并递归压缩子文件
+            if (!relativePath.isEmpty()) {
+                zipOut.putNextEntry(new ZipEntry(relativePath + "/"));
+                zipOut.closeEntry();
             }
-            // 检查是否以忽略扩展名结尾
-            if (IGNORED_EXTENSIONS.stream().anyMatch(ext -> partName.toLowerCase().endsWith(ext))) {
-                return false;
+
+            File[] children = fileToZip.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    compressDirectory(child, parentDir, zipOut);
+                }
             }
+        } else {
+            // 处理文件：添加文件条目并写入内容
+            zipOut.putNextEntry(new ZipEntry(relativePath));
+            try (FileInputStream fis = new FileInputStream(fileToZip)) {
+                byte[] buffer = new byte[8192];
+                int len;
+                while ((len = fis.read(buffer)) > 0) {
+                    zipOut.write(buffer, 0, len);
+                }
+            }
+            zipOut.closeEntry();
         }
-        return true;
     }
 }

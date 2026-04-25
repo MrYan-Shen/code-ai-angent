@@ -5,7 +5,6 @@ import lombok.Getter;
 
 /**
  * 代码生成类型枚举
- * 后续的其他Service应该也会用到，所以先放在model包下
  */
 @Getter
 public enum CodeGenTypeEnum {

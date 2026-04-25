@@ -16,9 +16,6 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
-/**
- * 截图服务实现类
- */
 @Service
 @Slf4j
 public class ScreenshotServiceImpl implements ScreenshotService {
@@ -68,7 +65,7 @@ public class ScreenshotServiceImpl implements ScreenshotService {
     }
 
     /**
-     * 生成截图的对象存储键（按照日期存储，便于后续的管理和维护）
+     * 生成截图的对象存储键
      * 格式：/screenshots/2025/07/31/filename.jpg
      */
     private String generateScreenshotKey(String fileName) {
@@ -77,7 +74,7 @@ public class ScreenshotServiceImpl implements ScreenshotService {
     }
 
     /**
-     * 清理本地文件(因为上传到COS对象存储中，及时清理，避免占用磁盘空间)
+     * 清理本地文件
      *
      * @param localFilePath 本地文件路径
      */

@@ -6,23 +6,26 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * 后端接受前端的用户注册请求参数的类
-
- * 在Java接口开发中，为每个接口定义一个专门的类来接收请求参数，可以提高代码的可读性和维护性，
- * 便于对参数进行统一验证和扩展，同时减少接口方法参数过多导致的复杂性，有助于在复杂场景下更清晰地管理和传递数据。
+ * 用户注册请求
  */
 @Data
 public class UserRegisterRequest implements Serializable {
 
     @Serial
-    private static final long serialVersionUID = 3191241716373120793L;
+    private static final long serialVersionUID = 1L;
 
-    //账号
+    /**
+     * 账号
+     */
     private String userAccount;
 
-    //密码
+    /**
+     * 密码
+     */
     private String userPassword;
 
-    //确认密码
+    /**
+     * 确认密码
+     */
     private String checkPassword;
 }

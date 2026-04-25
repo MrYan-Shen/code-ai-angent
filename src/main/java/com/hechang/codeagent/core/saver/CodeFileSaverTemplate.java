@@ -1,19 +1,14 @@
 package com.hechang.codeagent.core.saver;
 
 import cn.hutool.core.io.FileUtil;
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
-
 import com.hechang.codeagent.constant.AppConstant;
-import com.hechang.codeagent.core.CodeFileSaver;
 import com.hechang.codeagent.exception.BusinessException;
 import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 /**
  * 抽象代码文件保存器 - 模板方法模式
@@ -32,6 +27,7 @@ public abstract class CodeFileSaverTemplate<T> {
      * 模板方法：保存代码的标准流程
      *
      * @param result 代码结果对象
+     * @param appId 应用 ID
      * @return 保存的目录
      */
     public final File saveCode(T result, Long appId) {
@@ -54,7 +50,8 @@ public abstract class CodeFileSaverTemplate<T> {
      */
     public final void writeToFile(String dirPath, String filename, String content) {
         if (StrUtil.isNotBlank(content)) {
-            CodeFileSaver.writeToFile(dirPath, filename, content);
+            String filePath = dirPath + File.separator + filename;
+            FileUtil.writeString(content, filePath, StandardCharsets.UTF_8);
         }
     }
 
@@ -70,17 +67,20 @@ public abstract class CodeFileSaverTemplate<T> {
     }
 
     /**
-     * 构建文件的唯一路径：tmp/code_output/bizType_时间_雪花ID
+     * 构建文件的唯一路径：tmp/code_output/bizType_雪花 ID
      *
+     * @param appId 应用 ID
      * @return 目录路径
      */
     protected String buildUniqueDir(Long appId) {
-        if (appId == null){
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "appId不能为空");
+        if (appId == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
         }
         String codeType = getCodeType().getValue();
-
-        return CodeFileSaver.buildUniqueDir(codeType, appId);
+        String uniqueDirName = StrUtil.format("{}_{}", codeType, appId);
+        String dirPath = FILE_SAVE_ROOT_DIR + File.separator + uniqueDirName;
+        FileUtil.mkdir(dirPath);
+        return dirPath;
     }
 
     /**

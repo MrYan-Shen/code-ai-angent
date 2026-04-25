@@ -29,7 +29,7 @@ public class FileWriteTool extends BaseTool {
             String relativeFilePath,
             @P("要写入文件的内容")
             String content,
-            @ToolMemoryId Long appId //ToolMemoryId：在tool方法和ai服务方法之间传递会话ID，接收@MemoryId
+            @ToolMemoryId Long appId
     ) {
         try {
             Path path = Paths.get(relativeFilePath);

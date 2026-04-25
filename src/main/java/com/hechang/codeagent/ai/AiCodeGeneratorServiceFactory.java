@@ -2,11 +2,11 @@ package com.hechang.codeagent.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-
-import com.hechang.codeagent.ai.tools.FileWriteTool;
+import com.hechang.codeagent.ai.tools.*;
+import com.hechang.codeagent.exception.BusinessException;
+import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import com.hechang.codeagent.service.ChatHistoryService;
-
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -21,13 +21,20 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 /**
- * 创建工厂类来初始化 AI 服务
+ * AI 服务创建工厂
  */
 @Configuration
 @Slf4j
 public class AiCodeGeneratorServiceFactory {
-    @Resource(name = "openAiChatModel")
+
+    @Resource
     private ChatModel chatModel;
+
+    @Resource
+    private StreamingChatModel openAiStreamingChatModel;
+
+    @Resource
+    private StreamingChatModel reasoningStreamingChatModel;
 
     @Resource
     private RedisChatMemoryStore redisChatMemoryStore;
@@ -36,8 +43,7 @@ public class AiCodeGeneratorServiceFactory {
     private ChatHistoryService chatHistoryService;
 
     @Resource
-    private StreamingChatModel reasoningStreamingChatModel;
-
+    private ToolManager toolManager;
 
     /**
      * AI 服务实例缓存
@@ -58,30 +64,19 @@ public class AiCodeGeneratorServiceFactory {
     /**
      * 根据 appId 获取服务（为了兼容老逻辑）
      *
-     * @param appId 应用 id
-     * @return AiCodeGeneratorService
+     * @param appId
+     * @return
      */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId) {
         return getAiCodeGeneratorService(appId, CodeGenTypeEnum.HTML);
     }
 
     /**
-     * 构造缓存键
-     *
-     * @param appId 应用 id
-     * @param codeGenType 生成类型
-     * @return 缓存键
-     */
-    private String buildCacheKey(long appId, CodeGenTypeEnum codeGenType) {
-        return appId + "_" + codeGenType.getValue();
-    }
-
-    /**
-     * 根据 appId 获取服务 （带缓存）
+     * 根据 appId 获取服务
      *
      * @param appId       应用 id
      * @param codeGenType 生成类型
-     * @return AiCodeGeneratorService
+     * @return
      */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
         String cacheKey = buildCacheKey(appId, codeGenType);
@@ -93,7 +88,7 @@ public class AiCodeGeneratorServiceFactory {
      *
      * @param appId       应用 id
      * @param codeGenType 生成类型
-     * @return AiCodeGeneratorService
+     * @return
      */
     private AiCodeGeneratorService createAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
         log.info("为 appId: {} 创建新的 AI 服务实例", appId);
@@ -104,40 +99,50 @@ public class AiCodeGeneratorServiceFactory {
                 .chatMemoryStore(redisChatMemoryStore)
                 .maxMessages(20)
                 .build();
-        // 从数据库加载历史对话到记忆中
-        chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 25);
-        // 根据代码生成类型选择不同的模型配置
+        // 从数据库中加载对话历史到记忆中
+        chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
         return switch (codeGenType) {
+            // Vue 项目生成，使用工具调用和推理模型
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
                     .streamingChatModel(reasoningStreamingChatModel)
-                    //必须指定chatMemoryProvider的配置，为每个 memoryId 绑定会话记忆，否则调用对话法时可能会报错。
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
-                    // 指定 hallucinatedToolNameStrategy(幻觉工具名称策略)，当工具调用失败时，返回错误信息给AI
+                    .tools(toolManager.getAllTools())
+                    // 处理工具调用幻觉问题
                     .hallucinatedToolNameStrategy(toolExecutionRequest ->
-                        ToolExecutionResultMessage.from(
-                                toolExecutionRequest,
-                                "错误，不能被当做工具调用：" + toolExecutionRequest.name()
-                        ))
+                            ToolExecutionResultMessage.from(toolExecutionRequest,
+                                    "Error: there is no tool called " + toolExecutionRequest.name())
+                    )
                     .build();
+            // HTML 和 多文件生成，使用流式对话模型
             case HTML, MULTI_FILE -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
-                    .streamingChatModel(reasoningStreamingChatModel)
+                    .streamingChatModel(openAiStreamingChatModel)
                     .chatMemory(chatMemory)
                     .build();
+            default ->
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型: " + codeGenType.getValue());
         };
-
     }
 
     /**
      * 创建 AI 代码生成器服务
      *
-     * @return AiCodeGeneratorService
+     * @return
      */
     @Bean
     public AiCodeGeneratorService aiCodeGeneratorService() {
         return getAiCodeGeneratorService(0);
     }
 
+    /**
+     * 构造缓存键
+     *
+     * @param appId
+     * @param codeGenType
+     * @return
+     */
+    private String buildCacheKey(long appId, CodeGenTypeEnum codeGenType) {
+        return appId + "_" + codeGenType.getValue();
+    }
 }

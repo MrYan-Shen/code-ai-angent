@@ -5,18 +5,13 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
-import com.hechang.codeagent.ai.AiCodeGenTypeRoutingService;
-import com.hechang.codeagent.core.builder.VueProjectBuilder;
-import com.hechang.codeagent.core.handler.StreamHandlerExecutor;
-import com.hechang.codeagent.model.enums.ChatHistoryMessageTypeEnum;
-import com.hechang.codeagent.service.ChatHistoryService;
-import com.hechang.codeagent.service.ScreenshotService;
-import com.hechang.codeagent.utils.DirectoryUtils;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
+import com.hechang.codeagent.ai.AiCodeGenTypeRoutingService;
 import com.hechang.codeagent.constant.AppConstant;
 import com.hechang.codeagent.core.AiCodeGeneratorFacade;
-
+import com.hechang.codeagent.core.builder.VueProjectBuilder;
+import com.hechang.codeagent.core.handler.StreamHandlerExecutor;
 import com.hechang.codeagent.exception.BusinessException;
 import com.hechang.codeagent.exception.ErrorCode;
 import com.hechang.codeagent.exception.ThrowUtils;
@@ -25,10 +20,13 @@ import com.hechang.codeagent.model.dto.app.AppQueryRequest;
 import com.hechang.codeagent.model.entity.App;
 import com.hechang.codeagent.mapper.AppMapper;
 import com.hechang.codeagent.model.entity.User;
+import com.hechang.codeagent.model.enums.ChatHistoryMessageTypeEnum;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import com.hechang.codeagent.model.vo.AppVO;
 import com.hechang.codeagent.model.vo.UserVO;
 import com.hechang.codeagent.service.AppService;
+import com.hechang.codeagent.service.ChatHistoryService;
+import com.hechang.codeagent.service.ScreenshotService;
 import com.hechang.codeagent.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -47,29 +45,159 @@ import java.util.stream.Collectors;
 /**
  * 应用 服务层实现。
  *
- * @author chang
  */
 @Service
 @Slf4j
-public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppService{
+public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
     @Resource
     private UserService userService;
 
     @Resource
-    private ChatHistoryService chatHistoryService;
-
-    @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
 
     @Resource
+    private ChatHistoryService chatHistoryService;
+
+    @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
+
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+
     @Resource
     private ScreenshotService screenshotService;
+
     @Resource
     private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+
+    @Override
+    public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
+        // 1. 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 错误");
+        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "提示词不能为空");
+        // 2. 查询应用信息
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验，仅本人可以和自己的应用对话
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
+        }
+        // 4. 获取应用的代码生成类型
+        String codeGenType = app.getCodeGenType();
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用代码生成类型错误");
+        }
+        // 5. 在调用 AI 前，先保存用户消息到数据库中
+        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
+        // 6. 调用 AI 生成代码（流式）
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 7. 收集 AI 响应的内容，并且在完成后保存记录到对话历史
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+    }
+
+    @Override
+    public Long createApp(AppAddRequest appAddRequest, User loginUser) {
+        // 参数校验
+        String initPrompt = appAddRequest.getInitPrompt();
+        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
+        // 构造入库对象
+        App app = new App();
+        BeanUtil.copyProperties(appAddRequest, app);
+        app.setUserId(loginUser.getId());
+        // 应用名称暂时为 initPrompt 前 12 位
+        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
+        // 使用 AI 智能选择代码生成类型
+        CodeGenTypeEnum selectedCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(selectedCodeGenType.getValue());
+        // 插入数据库
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        log.info("应用创建成功，ID: {}, 类型: {}", app.getId(), selectedCodeGenType.getValue());
+        return app.getId();
+    }
+
+    @Override
+    public String deployApp(Long appId, User loginUser) {
+        // 1. 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 错误");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
+        // 2. 查询应用信息
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验，仅本人可以部署自己的应用
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限部署该应用");
+        }
+        // 4. 检查是否已有 deployKey
+        String deployKey = app.getDeployKey();
+        // 如果没有，则生成 6 位 deployKey（字母 + 数字）
+        if (StrUtil.isBlank(deployKey)) {
+            deployKey = RandomUtil.randomString(6);
+        }
+        // 5. 获取代码生成类型，获取原始代码生成路径（应用访问目录）
+        String codeGenType = app.getCodeGenType();
+        String sourceDirName = codeGenType + "_" + appId;
+        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
+        // 6. 检查路径是否存在
+        File sourceDir = new File(sourceDirPath);
+        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码路径不存在，请先生成应用");
+        }
+        // 7. Vue 项目特殊处理：执行构建
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT) {
+            // Vue 项目需要构建
+            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDirPath);
+            ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue 项目构建失败，请重试");
+            // 检查 dist 目录是否存在
+            File distDir = new File(sourceDirPath, "dist");
+            ThrowUtils.throwIf(!distDir.exists(), ErrorCode.SYSTEM_ERROR, "Vue 项目构建完成但未生成 dist 目录");
+            // 构建完成后，需要将构建后的文件复制到部署目录
+            sourceDir = distDir;
+        }
+        // 8. 复制文件到部署目录
+        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
+        try {
+            FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用部署失败：" + e.getMessage());
+        }
+        // 9. 更新数据库
+        App updateApp = new App();
+        updateApp.setId(appId);
+        updateApp.setDeployKey(deployKey);
+        updateApp.setDeployedTime(LocalDateTime.now());
+        boolean updateResult = this.updateById(updateApp);
+        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
+        // 10. 得到可访问的 URL 地址
+        String appDeployUrl = String.format("%s/%s", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        // 11. 异步生成截图并且更新应用封面
+        generateAppScreenshotAsync(appId, appDeployUrl);
+        return appDeployUrl;
+    }
+
+    /**
+     * 异步生成应用截图并更新封面
+     *
+     * @param appId  应用ID
+     * @param appUrl 应用访问URL
+     */
+    @Override
+    public void generateAppScreenshotAsync(Long appId, String appUrl) {
+        // 使用虚拟线程并执行
+        Thread.startVirtualThread(() -> {
+            // 调用截图服务生成截图并上传
+            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+            // 更新数据库的封面
+            App updateApp = new App();
+            updateApp.setId(appId);
+            updateApp.setCover(screenshotUrl);
+            boolean updated = this.updateById(updateApp);
+            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+        });
+    }
 
     @Override
     public AppVO getAppVO(App app) {
@@ -135,200 +263,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
     }
 
     /**
-     * 优化——使用 StreamHandlerExecutor 解析代码
-     * @param appId  appId
-     * @param userMessage 用户输入
-     * @param loginUser 登录用户
-     * @return Flux<String>
-     */
-    @Override
-    public Flux<String> chatToGenCode(Long appId, String userMessage, User loginUser) {
-        // 校验
-        ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR, "应用id不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(userMessage), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
-        // 获取应用信息
-        App app = this.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 验证用户是否有权限访问该应用，仅应用创建者可以生成代码
-        if (!app.getUserId().equals(loginUser.getId())){
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "没有权限访问该应用");
-        }
-        // 获取应用的代码生成类型
-        String codeGenType = app.getCodeGenType();
-        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
-        if (codeGenTypeEnum == null){
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码生成类型");
-        }
-        // 通过效验后，添加用户消息到对话历史
-        chatHistoryService.addChatMessage(appId, userMessage, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
-        // 调用 AI 生成代码(流式)
-        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(userMessage, codeGenTypeEnum, appId);
-        // 收集AI响应得到内容并记录到对话历史
-        return streamHandlerExecutor.execute(contentFlux, chatHistoryService, appId, loginUser, codeGenTypeEnum);
-    }
-
-    @Override
-    public String deployApp(Long appId, User loginUser) {
-        // 参数验证
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用id不能为空");
-        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
-        // 获取应用信息
-        App app = this.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 验证用户是否有权限访问该应用，仅应用创建者可以生成代码
-        if (!app.getUserId().equals(loginUser.getId())){
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "没有权限部署该应用");
-        }
-        // 检查是否已有deployKey，如果没有则生成新的
-        String deployKey = app.getDeployKey();
-        boolean isRedeploy = StrUtil.isNotBlank(deployKey);
-        if (!isRedeploy) {
-            // 首次部署，生成6位的deployKey (大小写字母 + 数字)
-            deployKey = RandomUtil.randomString(6);
-        } else {
-            log.info("应用已存在deployKey: {}，将进行重新部署", deployKey);
-        }
-//        // 获取应用的代码生成类型
-//        String codeGenType = app.getCodeGenType();
-//
-//        // 在 code_output 目录下查找匹配的文件夹
-//        File codeOutputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR);
-//        if (!codeOutputDir.exists() || !codeOutputDir.isDirectory()) {
-//            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码输出目录不存在");
-//        }
-//
-//        File sourceDir = null;
-//
-//        // VUE_PROJECT 类型使用固定目录名，其他类型使用前缀匹配
-//        if ("vue_project".equals(codeGenType)) {
-//            // Vue 项目使用固定目录名：vue_project_{appId}
-//            String dirName = codeGenType + "_" + appId;
-//            sourceDir = new File(codeOutputDir, dirName);
-//            log.info("Vue项目，尝试查找目录: {}", sourceDir.getAbsolutePath());
-//        } else {
-//            // 其他类型使用前缀匹配：codeGenType_appId_
-//            String namePrefix = codeGenType + "_" + appId + "_";
-//
-//            // 查找所有以前缀开头的文件夹，并选择最后修改时间最新的
-//            long latestModified = 0;
-//            File[] matchedDirs = codeOutputDir.listFiles((dir, name) ->
-//                dir.isDirectory() && name.startsWith(namePrefix)
-//            );
-//
-//            if (matchedDirs != null) {
-//                // 选择最后修改时间最新的文件夹
-//                for (File dir : matchedDirs) {
-//                    if (dir.lastModified() > latestModified) {
-//                        latestModified = dir.lastModified();
-//                        sourceDir = dir;
-//                    }
-//                }
-//            }
-//        }
-//
-//        // 检查是否找到源目录
-//        if (sourceDir == null || !sourceDir.exists() || !sourceDir.isDirectory()) {
-//            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
-//        }
-//        log.info("找到应用代码目录: {}", sourceDir.getAbsolutePath());
-//
-//        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
-//        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT){
-//            // 处理Vue项目
-//            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDir.getAbsolutePath());
-//            ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue项目构建失败");
-//            // 检查dist目录是否存在
-//            File distDir = new File(sourceDir, "dist");
-//            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.SYSTEM_ERROR, "Vue项目构建完成单但未生成dist目录");
-//            // 将dist目录作为部署源
-//            sourceDir = distDir;
-//            log.info("找到Vue项目代码目录: {}", sourceDir.getAbsolutePath());
-//        }
-        File sourceDir = DirectoryUtils.getCodeGeneratePath(app, appId);
-
-        // 复制文件到部署目录
-        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
-        try {
-            FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
-        } catch (Exception e){
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"部署失败：" + e.getMessage());
-        }
-        // 更新应用的deployKey和部署时间
-        App updateApp = new App();
-        updateApp.setId(appId);
-        updateApp.setDeployKey(deployKey);
-        updateApp.setDeployedTime(LocalDateTime.now());
-        boolean updateResult = this.updateById(updateApp);
-        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR,"更新应用部署信息失败");
-        // 返回可访问的 URL
-        String appDeployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
-        // 异步生成截图并更新应用封面
-        generateAppScreenshotAsync(appId, appDeployUrl);
-        return appDeployUrl;
-    }
-
-    /**
-     * 异步生成应用截图 —— 使用java21的新特性虚拟线程
+     * 删除应用时，关联删除对话历史
      *
-     * @param appId appId
-     * @param appUrl appUrl
+     * @param id
+     * @return
      */
-    @Override
-    public void generateAppScreenshotAsync(Long appId, String appUrl) {
-        // 创建虚拟线程异步执行
-        Thread.ofVirtual().start(() -> {
-           // 调用截图服务生成截图
-            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
-            // 更新应用封面
-            App updateApp = new App();
-            updateApp.setId(appId);
-            updateApp.setCover(screenshotUrl);
-            boolean updateResult = this.updateById(updateApp);
-            ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR,"更新应用封面失败");
-        });
-    }
-
-    @Override
-    public Long createApp(AppAddRequest appAddRequest, User loginUser) {
-        //参数校验
-        String initPrompt = appAddRequest.getInitPrompt();
-        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "请输入应用初始化提示");
-        //构造入库对象
-        App app = new App();
-        BeanUtil.copyProperties(appAddRequest, app);
-        app.setUserId(loginUser.getId());
-        //应用名暂时为initPrompt 前12位
-        CodeGenTypeEnum selectedCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
-        app.setCodeGenType(selectedCodeGenType.getValue());
-        //插入数据库
-        boolean result = this.save(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        log.info("创建应用成功,ID：{},类型：{}", app.getId(),selectedCodeGenType.getValue());
-
-        return app.getId();
-    }
-
-
     @Override
     public boolean removeById(Serializable id) {
         if (id == null) {
             return false;
         }
-        // 转换为 Long 类型
-        Long appId = Long.valueOf(id.toString());
+        long appId = Long.parseLong(id.toString());
         if (appId <= 0) {
             return false;
         }
-        //先删除关联的对话历史
+        // 先删除关联的对话历史
         try {
             chatHistoryService.deleteByAppId(appId);
         } catch (Exception e) {
-            //记录日志但不阻止应用删除
-             log.error("删除应用关联对话历史失败：{}",e.getMessage());
+            log.error("删除应用关联的对话历史失败：{}", e.getMessage());
         }
-        //删除应用
+        // 删除应用
         return super.removeById(id);
     }
-
-
 }

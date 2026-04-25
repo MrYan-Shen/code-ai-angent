@@ -1,6 +1,5 @@
 package com.hechang.codeagent.ai;
 
-
 import com.hechang.codeagent.ai.model.HtmlCodeResult;
 import com.hechang.codeagent.ai.model.MultiFileCodeResult;
 import dev.langchain4j.service.MemoryId;
@@ -9,29 +8,28 @@ import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
 import reactor.core.publisher.Flux;
 
-/**
- * AI代码生成器Service
- */
 public interface AiCodeGeneratorService {
 
     /**
-     * 生成代码
-     * @param prompt 提示
-     * @return 生成的代码
+     * 生成 HTML 代码
+     *
+     * @param userMessage 用户提示词
+     * @return AI 的输出结果
      */
     @SystemMessage(fromResource = "prompt/codegen-html-system-prompt.txt")
-    HtmlCodeResult generateCode(String prompt);
+    HtmlCodeResult generateHtmlCode(String userMessage);
 
     /**
      * 生成多文件代码
-     * @param prompt 提示
-     * @return 生成的代码结果
+     *
+     * @param userMessage 用户提示词
+     * @return AI 的输出结果
      */
     @SystemMessage(fromResource = "prompt/codegen-multi-file-system-prompt.txt")
-    MultiFileCodeResult generateMultiFileCode(String prompt);
+    MultiFileCodeResult generateMultiFileCode(String userMessage);
 
     /**
-     * 生成 HTML 代码 (流式)
+     * 生成 HTML 代码
      *
      * @param userMessage 用户提示词
      * @return AI 的输出结果
@@ -40,7 +38,7 @@ public interface AiCodeGeneratorService {
     Flux<String> generateHtmlCodeStream(String userMessage);
 
     /**
-     * 生成多文件代码 （流式）
+     * 生成多文件代码
      *
      * @param userMessage 用户提示词
      * @return AI 的输出结果
@@ -50,7 +48,7 @@ public interface AiCodeGeneratorService {
 
     /**
      * 生成 Vue 项目代码（流式）
-     * @param appId 应用id
+     *
      * @param userMessage 用户提示词
      * @return AI 的输出结果
      */
