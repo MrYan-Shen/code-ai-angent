@@ -3,6 +3,8 @@ package com.hechang.codeagent.controller;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.hechang.codeagent.ratelimiter.annotation.RateLimit;
+import com.hechang.codeagent.ratelimiter.enums.RateLimitType;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.hechang.codeagent.annotation.AuthCheck;
@@ -53,6 +55,12 @@ public class AppController {
     @Resource
     private ProjectDownloadService projectDownloadService;
 
+    @RateLimit( // 限流:每个用户在60s内最多请求5次AI对话请求，超过限制灰返回错误提示
+            limitType = RateLimitType.USER,
+            rate = 5,
+            rateInterval = 60,
+            message = "AI 对话请求过于频繁，请稍后再试"
+    )
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
                                                        @RequestParam String message,
