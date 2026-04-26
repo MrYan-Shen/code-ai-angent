@@ -41,6 +41,7 @@ public class ImageCollectorNode {
                 List<CompletableFuture<List<ImageResource>>> futures = new ArrayList<>();
                 // 并发执行内容图片搜索
                 if (plan.getContentImageTasks() != null) {
+                    // 获取图片搜索工具
                     ImageSearchTool imageSearchTool = SpringContextUtil.getBean(ImageSearchTool.class);
                     for (ImageCollectionPlan.ImageSearchTask task : plan.getContentImageTasks()) {
                         futures.add(CompletableFuture.supplyAsync(() ->

@@ -17,7 +17,7 @@ class AiCodeGeneratorServiceTest {
 
     @Test
     void generateCode() {
-        HtmlCodeResult result = aiCodeGeneratorService.generateCode("做个类似淘宝秒杀的小工具");
+        HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode("做个类似淘宝秒杀的小工具");
         Assertions.assertNotNull(result);
     }
 
