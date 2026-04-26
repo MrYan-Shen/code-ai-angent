@@ -2,6 +2,7 @@ package com.hechang.codeagent.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.hechang.codeagent.ai.guardrail.PromptSafetyInputGuardrail;
 import com.hechang.codeagent.ai.tools.*;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import com.hechang.codeagent.service.ChatHistoryService;
@@ -101,6 +102,7 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(reasoningStreamingChatModel)
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools((Object) toolManager.getAllTools())
+                        .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
                         // 处理工具调用幻觉问题
                         .hallucinatedToolNameStrategy(toolExecutionRequest ->
                                 ToolExecutionResultMessage.from(toolExecutionRequest,
