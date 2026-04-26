@@ -102,6 +102,7 @@ public class AiCodeGeneratorServiceFactory {
                         SpringContextUtil.getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
                         .streamingChatModel(reasoningStreamingChatModel)
+                        .maxSequentialToolsInvocations(20) //最多连续调用20次工具
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools((Object) toolManager.getAllTools())
                         .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
@@ -120,6 +121,7 @@ public class AiCodeGeneratorServiceFactory {
                         SpringContextUtil.getBean("streamingChatModelPrototype", StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
                         .chatModel(chatModel)
+                        .maxSequentialToolsInvocations(20) //最多连续调用20次工具
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .build();
