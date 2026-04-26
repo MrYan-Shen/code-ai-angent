@@ -1,7 +1,7 @@
 package com.hechang.codeagent.config;
 
-import dev.langchain4j.model.chat.StreamingChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -10,13 +10,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
 /**
- * 推理流式模型配置
+ * 智能路由模型配置
  */
 @Configuration
-@ConfigurationProperties(prefix = "langchain4j.open-ai.reasoning-streaming-chat-model")
+@ConfigurationProperties(prefix = "langchain4j.open-ai.routing-chat-model")
 @Data
 @Slf4j
-public class ReasoningStreamingChatModelConfig {
+public class RoutingAiModelConfig {
 
     private String baseUrl;
 
@@ -33,9 +33,9 @@ public class ReasoningStreamingChatModelConfig {
      */
     @Bean
     @Scope("prototype")
-    public StreamingChatModel reasoningStreamingChatModelPrototype() {
+    public ChatModel routingChatModelPrototype() {
         // 使用配置文件中的模型名称和参数
-        return OpenAiStreamingChatModel.builder()
+        return OpenAiChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
                 .modelName(modelName)
