@@ -8,6 +8,8 @@ import com.hechang.codeagent.ai.model.MultiFileCodeResult;
 import com.hechang.codeagent.ai.model.message.AiResponseMessage;
 import com.hechang.codeagent.ai.model.message.ToolExecutedMessage;
 import com.hechang.codeagent.ai.model.message.ToolRequestMessage;
+import com.hechang.codeagent.constant.AppConstant;
+import com.hechang.codeagent.core.builder.VueProjectBuilder;
 import com.hechang.codeagent.core.parser.CodeParserExecutor;
 import com.hechang.codeagent.core.saver.CodeFileSaverExecutor;
 import com.hechang.codeagent.exception.BusinessException;
@@ -18,6 +20,7 @@ import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.tool.ToolExecution;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -32,6 +35,8 @@ public class AiCodeGeneratorFacade {
 
     @Resource
     private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
+    @Autowired
+    private VueProjectBuilder vueProjectBuilder;
 
     /**
      * 统一入口：根据类型生成并保存代码
@@ -88,11 +93,7 @@ public class AiCodeGeneratorFacade {
             }
             case VUE_PROJECT -> {
                 TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
-                yield processTokenStream(tokenStream);
-            }
-            default -> {
-                String errorMessage = "不支持的生成类型：" + codeGenTypeEnum.getValue();
-                throw new BusinessException(ErrorCode.SYSTEM_ERROR, errorMessage);
+                yield processTokenStream(tokenStream, appId);
             }
         };
     }
@@ -103,7 +104,7 @@ public class AiCodeGeneratorFacade {
      * @param tokenStream TokenStream 对象
      * @return Flux<String> 流式响应
      */
-    private Flux<String> processTokenStream(TokenStream tokenStream) {
+    private Flux<String> processTokenStream(TokenStream tokenStream, Long appId) {
         return Flux.create(sink -> {
             tokenStream.onPartialResponse((String partialResponse) -> {
                         AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
@@ -118,11 +119,15 @@ public class AiCodeGeneratorFacade {
                         sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
                     })
                     .onCompleteResponse((ChatResponse response) -> {
+                        // 执行 Vue 项目构建（同步执行，确保预览时项目已就绪）
+                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + "vue_project_" + appId;
+                        vueProjectBuilder.buildProject(projectPath);
                         sink.complete();
                     })
                     .onError((Throwable error) -> {
-                        error.printStackTrace();
                         sink.error(error);
+                        throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码生成失败：" + error.getMessage());
+
                     })
                     .start();
         });
