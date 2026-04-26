@@ -22,6 +22,7 @@ import com.hechang.codeagent.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -254,11 +255,25 @@ public class AppController {
 
     /**
      * 分页获取精选应用列表
-     *
+     *  在 Cacheable 中使用了SpEL（Spring Expression Language）表达式:
+     *      T(类名）：用于调用静态方法，生成缓存 key
+     *      #参数名：用于引用方法参数
+     *      condition:设置缓存条件，只有前10页才会被缓存
+     *  Cacheable的工作原理：
+     *      1.方法执行前：Spring 根据 key 表达式生成缓存键
+     *      2.缓存检查：检查 Redis 中是否存在该键对应的缓存数据
+     *      3.缓存命中：如果存在且未过期，直接返回缓存数据，不执行方法
+     *      4.缓存未命中：如果不存在，执行方法获取结果，并将结果存储到Redis 中
+     *      5.返回结果：返回方法执行结果
      * @param appQueryRequest 查询请求
      * @return 精选应用列表
      */
     @PostMapping("/good/list/page/vo")
+    @Cacheable(
+            value = "good_app_page",
+            key = "T(com.hechang.codeagent.utils.CacheKeyUtils).generateCacheKey(#appQueryRequest)",
+            condition = "#appQueryRequest.pageNum <= 10"
+    )
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
         // 限制每页最多 20 个
