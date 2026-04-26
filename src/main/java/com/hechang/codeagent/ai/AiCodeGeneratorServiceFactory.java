@@ -3,12 +3,14 @@ package com.hechang.codeagent.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hechang.codeagent.ai.guardrail.PromptSafetyInputGuardrail;
+import com.hechang.codeagent.ai.guardrail.RetryOutputGuardrail;
 import com.hechang.codeagent.ai.tools.*;
 import com.hechang.codeagent.model.enums.CodeGenTypeEnum;
 import com.hechang.codeagent.service.ChatHistoryService;
 import com.hechang.codeagent.utils.SpringContextUtil;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import dev.langchain4j.guardrail.config.OutputGuardrailsConfig;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -103,6 +105,7 @@ public class AiCodeGeneratorServiceFactory {
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools((Object) toolManager.getAllTools())
                         .inputGuardrails(new PromptSafetyInputGuardrail()) // 添加输入护轨
+                        .outputGuardrails(new RetryOutputGuardrail()) // 添加输出护轨-如果用了输出护轨，可能会导致流式输出的响应不及时，等到AI输出结束才一起返回，所以为了追求流式输出效果，建议不要通过护轨方式进行重试
                         // 处理工具调用幻觉问题
                         .hallucinatedToolNameStrategy(toolExecutionRequest ->
                                 ToolExecutionResultMessage.from(toolExecutionRequest,
